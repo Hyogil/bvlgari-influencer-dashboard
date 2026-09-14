@@ -12,6 +12,7 @@ from ml import (
     DATA,
     VALID_COUNTRIES,
     data_quality_summary,
+    fit_method_summary,
     explain_creator,
     score_creators,
     top_records,
@@ -39,6 +40,7 @@ def options():
         "countries": ["KR", "Global", "All"],
         "sample_size": int(len(DATA.creators)),
         "repaired_rows": int(DATA.repaired_rows),
+        "fit_method": fit_method_summary(),
     }
 
 
@@ -79,7 +81,9 @@ def analyze(
         "training_size": int(model.training_size),
         "dataset_size": int(len(DATA.creators)),
         "repaired_rows": int(DATA.repaired_rows),
+        "fit_method": fit_method_summary(),
         "target_type": "proxy",
+        "fit_method": fit_method_summary(),
         "proxy_positive_rate": model.proxy_positive_rate,
         "top10": top_records(scored, 10),
         **explanation,
@@ -97,4 +101,5 @@ def health():
         "status": "ok",
         "creators": int(len(DATA.creators)),
         "repaired_rows": int(DATA.repaired_rows),
+        "fit_method": fit_method_summary(),
     }
