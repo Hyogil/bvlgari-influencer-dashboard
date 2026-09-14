@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Influencer Selection Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="title-wrap">
+      <div class="brand-mark">BVLGARI</div>
+      <div>
+        <div class="brand-title">Influencer Selection Dashboard</div>
+        <div class="subtle">5,300-creator dataset · KR / Global / All · Logistic Regression + Decision Tree</div>
+      </div>
+    </div>
+    <div class="badge">Python · FastAPI · scikit-learn</div>
+  </header>
+
+  <main class="page">
+    <section class="filters card">
+      <div class="field"><label>Brand</label><select id="brand"></select></div>
+      <div class="field"><label>Country</label><select id="country"></select></div>
+      <div class="field"><label>Platform</label><select id="platform"></select></div>
+      <div class="field"><label>Campaign</label><select id="campaign"></select></div>
+      <button id="runBtn">Run analysis</button>
+    </section>
+
+    <section>
+      <div class="section-heading">
+        <div>
+          <h2>Top 3 recommended influencers</h2>
+          <p>Ranked by Logistic Regression selection probability.</p>
+        </div>
+        <div id="contextLabel" class="context-label"></div>
+      </div>
+      <div id="top3" class="top3-grid"></div>
+    </section>
+
+    <section class="analysis-grid">
+      <div class="card summary-card">
+        <h3>Model summary</h3>
+        <div class="model-block"><span class="model-no">1</span><div><b>Logistic Regression</b><p>Ranks creators by campaign-suitability probability.</p></div></div>
+        <div class="model-block"><span class="model-no">2</span><div><b>Decision Tree</b><p>Explains the classification route and thresholds.</p></div></div>
+        <div class="divider"></div>
+        <dl>
+          <div><dt>Dataset</dt><dd><span id="datasetSize">-</span></dd></div>
+          <div><dt>Training cohort</dt><dd><span id="trainingSize">-</span></dd></div>
+          <div><dt>Candidate set</dt><dd><span id="sampleSize">-</span></dd></div>
+          <div><dt>Repaired rows</dt><dd><span id="repairedRows">-</span></dd></div>
+        </dl>
+        <div class="demo-note"><b>Academic note:</b> the source CSV has no historical campaign outcome, so the model uses a transparent proxy target.</div>
+      </div>
+
+      <div class="card ranking-card">
+        <h3>Top 10 candidates by probability</h3>
+        <p class="ranking-hint">Click any candidate. The formula, sigmoid point, and Decision Tree update for that creator.</p>
+        <div class="rank-head"><span>#</span><span>Influencer</span><span>Probability</span><span></span></div>
+        <div id="ranking"></div>
+      </div>
+
+      <div class="card formula-card">
+        <h3 class="formula-title">Logistic Regression Formula &amp; Score <span id="formulaSelected" class="formula-selected"></span></h3>
+        <div class="formula-strip">
+          <div class="formula-box"><span class="formula-step">1</span><div><small>Logistic function</small><div class="math">P(Y=1) = 1 / (1 + e<sup>−z</sup>)</div></div></div>
+          <div class="formula-box"><span class="formula-step">2</span><div><small>Logit (standardized inputs)</small><div class="math">z = β₀ + β₁Z₁ + β₂Z₂ + β₃Z₃ + β₄Z₄</div><div class="mini-math">Z = (X − μ) / σ</div></div></div>
+        </div>
+
+        <div class="formula-lower">
+          <div>
+            <h4>Feature values</h4>
+            <div id="featureValues" class="mini-table"></div>
+          </div>
+          <div>
+            <h4>Contributions to z</h4>
+            <div id="contributions" class="mini-table"></div>
+          </div>
+          <div class="sigmoid-wrap">
+            <h4><span class="formula-step small">3</span> Sigmoid curve</h4>
+            <svg id="sigmoidSvg" viewBox="0 0 300 205" preserveAspectRatio="xMidYMid meet"></svg>
+            <div id="sigmoidCaption" class="sigmoid-caption"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card tree-card">
+      <div class="section-heading compact">
+        <div>
+          <h2>Decision Tree for influencer selection</h2>
+          <p>Full tree fitted into the panel; the selected creator's route is highlighted.</p>
+        </div>
+        <div class="legend-inline">
+          <span><i class="legend-box selected"></i>Selected path</span>
+          <span><i class="legend-box normal"></i>Other node</span>
+        </div>
+      </div>
+
+      <div class="tree-layout">
+        <div class="tree-fit"><svg id="treeSvg" preserveAspectRatio="xMidYMid meet"></svg></div>
+        <aside class="explain-panel">
+          <div class="explain-box accent">
+            <h3>Decision path</h3>
+            <div id="decisionPath"></div>
+          </div>
+          <div class="explain-box">
+            <h3>Selected influencer</h3>
+            <div id="selectedInfo"></div>
+          </div>
+          <div class="explain-box takeaway-box">
+            <h3>Key takeaway</h3>
+            <div id="takeaway" class="small-copy"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
