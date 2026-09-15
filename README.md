@@ -53,3 +53,18 @@ The numbers shown in the formula panel come directly from the fitted scikit-lear
 ## Academic limitation
 
 The public creator dataset does not contain a historical campaign outcome. The project therefore creates a transparent proxy binary target. The displayed probabilities should be described as **model-estimated campaign suitability under the proxy-target definition**, not as actual historical BVLGARI campaign success probabilities.
+
+
+## Local Resource folder
+
+This build uses `Resource/` for creator avatars and local icon resources.
+
+- `Resource/images/instagram/` — Instagram JPG avatars, filename = handle without `@`
+- `Resource/images/tiktok/` — TikTok JPG avatars
+- `Resource/images/youtube/` — YouTube JPG avatars
+- `Resource/images/sample/` — local fallback avatars, only when a creator image is missing
+- `Resource/fontawesome/css/fa-local.css` — local FA-class-compatible icon stylesheet
+
+Example: `@jin` -> `Resource/images/instagram/jin.jpg`.
+
+External `i.pravatar.cc`, Font Awesome CDN, and Google Fonts dependencies were removed.

@@ -20,9 +20,25 @@ function hashCode(text){
   for(let i=0;i<text.length;i++) h = ((h<<5)-h) + text.charCodeAt(i);
   return Math.abs(h);
 }
-function avatarUrl(handle){
-  const idx = (hashCode(String(handle)) % 70) + 1;
-  return `https://i.pravatar.cc/160?img=${idx}`;
+function avatarFileName(handle){
+  return String(handle || '').replace(/^@/, '').replace(/[^a-zA-Z0-9._-]/g, '_') + '.jpg';
+}
+function avatarUrl(handle, platform){
+  const p = String(platform || '').toLowerCase();
+  const folder = p.includes('instagram') ? 'instagram'
+               : p.includes('tiktok') ? 'tiktok'
+               : p.includes('youtube') ? 'youtube'
+               : 'sample';
+  return `/Resource/images/${folder}/${encodeURIComponent(avatarFileName(handle))}`;
+}
+function sampleAvatarUrl(handle){
+  const idx = (hashCode(String(handle)) % 6) + 1;
+  return `/Resource/images/sample/sample-${idx}.svg`;
+}
+function avatarFallback(img, handle){
+  if(img.dataset.fallbackApplied === '1') return;
+  img.dataset.fallbackApplied = '1';
+  img.src = sampleAvatarUrl(handle);
 }
 function platformIcon(platform){
   const p = String(platform || '').toLowerCase();
@@ -80,9 +96,8 @@ function renderTop3(){
       <div class="rank-pill">Top ${c.rank}</div>
       <div class="creator-main">
         <div class="avatar-wrap">
-          <img class="avatar-photo" src="${avatarUrl(c.handle)}" alt="Sample portrait for ${escapeAttr(c.handle)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">
-          <div class="avatar-photo" style="display:none;place-items:center;font-weight:800;color:#fff;background:linear-gradient(145deg,#46506a,#262f40)">${initials(c.handle)}</div>
-          <span class="platform-dot">${platformIcon(c.platform)}</span>
+          <img class="avatar-photo" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, \'${escapeAttr(c.handle)}\')">
+<span class="platform-dot">${platformIcon(c.platform)}</span>
         </div>
         <div class="creator-text">
           <div class="handle">${escapeHtml(c.handle)}</div>
@@ -110,7 +125,7 @@ function renderRanking(){
     <button type="button" class="rank-row ${c.handle===selectedHandle?'active':''}" data-handle="${escapeAttr(c.handle)}" aria-label="Inspect ${escapeAttr(c.handle)}">
       <div class="rank-num">${i+1}</div>
       <div class="rank-info">
-        <img class="rank-avatar" src="${avatarUrl(c.handle)}" alt="Sample portrait for ${escapeAttr(c.handle)}" onerror="this.style.visibility='hidden'">
+        <img class="rank-avatar" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, \'${escapeAttr(c.handle)}\')">
         <div>
           <div class="rank-handle">${escapeHtml(c.handle)}</div>
           <div class="rank-sub">${escapeHtml(safeName(c.name,c.handle))} · ${escapeHtml(c.niche)} · ${escapeHtml(c.platform)}</div>
@@ -207,7 +222,7 @@ function renderSelected(){
   const s=current.selected;
   $('selectedInfo').innerHTML=`
     <div class="selected-head">
-      <img class="selected-avatar" src="${avatarUrl(s.handle)}" alt="Sample portrait for ${escapeAttr(s.handle)}" onerror="this.style.visibility='hidden'">
+      <img class="selected-avatar" src="${avatarUrl(s.handle)}" alt="Sample portrait for ${escapeAttr(s.handle)}" onerror="avatarFallback(this, \'${escapeAttr(c.handle)}\')">
       <div>
         <div class="selected-name">${escapeHtml(s.handle)} ${s.verified?'<span class="verified-chip"><i class="fa-solid fa-badge-check"></i> Verified</span>':''}</div>
         <div class="selected-display-name">${escapeHtml(safeName(s.name,s.handle))}</div>

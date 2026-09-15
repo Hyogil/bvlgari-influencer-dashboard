@@ -20,9 +20,11 @@ from ml import (
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+RESOURCE_DIR = BASE_DIR / "Resource"
 
 app = FastAPI(title="Influencer Selection Dashboard", version="4.0.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/Resource", StaticFiles(directory=RESOURCE_DIR), name="resource")
 
 
 @app.get("/")
