@@ -222,7 +222,7 @@ function renderSelected(){
   const s=current.selected;
   $('selectedInfo').innerHTML=`
     <div class="selected-head">
-      <img class="selected-avatar" src="${avatarUrl(s.handle)}" alt="Sample portrait for ${escapeAttr(s.handle)}" onerror="avatarFallback(this, \'${escapeAttr(c.handle)}\')">
+      <img class="selected-avatar" src="${avatarUrl(s.handle)}" alt="Sample portrait for ${escapeAttr(s.handle)}" onerror="avatarFallback(this, \'${escapeAttr(s.handle)}\')">
       <div>
         <div class="selected-name">${escapeHtml(s.handle)} ${s.verified?'<span class="verified-chip"><i class="fa-solid fa-badge-check"></i> Verified</span>':''}</div>
         <div class="selected-display-name">${escapeHtml(safeName(s.name,s.handle))}</div>
