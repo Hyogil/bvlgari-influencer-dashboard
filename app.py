@@ -54,6 +54,10 @@ def analyze(
     country: str = Query("KR"),
     selected_handle: str | None = Query(None),
     brand_weight: float = Query(0.50, ge=0.0, le=1.0),
+    min_followers: int = Query(0, ge=0),
+    min_engagement: float = Query(0.0, ge=0.0, le=50.0),
+    decision_threshold: float = Query(0.50, ge=0.30, le=0.80),
+    tree_depth: int = Query(4, ge=2, le=6),
 ):
     if brand not in BRAND_PROFILES:
         raise HTTPException(400, f"Unknown brand: {brand}")
@@ -63,7 +67,16 @@ def analyze(
         raise HTTPException(400, f"Unknown country: {country}")
 
     try:
-        model, scored = score_creators(brand, campaign, platform, country, brand_weight)
+        model, scored = score_creators(
+            brand,
+            campaign,
+            platform,
+            country,
+            brand_weight,
+            min_followers,
+            min_engagement,
+            tree_depth,
+        )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -74,12 +87,23 @@ def analyze(
         selected_handle = str(scored.iloc[0]["handle"])
 
     try:
-        explanation = explain_creator(model, scored, selected_handle)
+        explanation = explain_creator(model, scored, selected_handle, decision_threshold)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
 
     return {
-        "context": {"brand": brand, "campaign": campaign, "platform": platform, "country": country, "brand_weight": brand_weight, "campaign_weight": 1.0 - brand_weight},
+        "context": {
+            "brand": brand,
+            "campaign": campaign,
+            "platform": platform,
+            "country": country,
+            "brand_weight": brand_weight,
+            "campaign_weight": 1.0 - brand_weight,
+            "min_followers": min_followers,
+            "min_engagement": min_engagement,
+            "decision_threshold": decision_threshold,
+            "tree_depth": tree_depth,
+        },
         "sample_size": int(len(scored)),
         "training_size": int(model.training_size),
         "dataset_size": int(len(DATA.creators)),

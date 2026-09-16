@@ -404,12 +404,15 @@ def filter_country(df: pd.DataFrame, country: str) -> pd.DataFrame:
     return df[df["country_group"] == country].copy()
 
 
-@lru_cache(maxsize=192)
+@lru_cache(maxsize=512)
 def train_context(
     brand: str,
     campaign: str,
     country: str = "All",
     brand_weight: float = DEFAULT_BRAND_WEIGHT,
+    min_followers: int = 0,
+    min_engagement: float = 0.0,
+    tree_depth: int = 4,
 ) -> ContextModel:
     if brand not in BRAND_PROFILES:
         raise ValueError(f"Unknown brand: {brand}")
@@ -419,8 +422,23 @@ def train_context(
         raise ValueError(f"Unknown country filter: {country}")
 
     country_df = filter_country(DATA.creators, country)
+
+    min_followers = max(0, int(min_followers))
+    min_engagement = max(0.0, float(min_engagement))
+    tree_depth = int(np.clip(int(tree_depth), 2, 6))
+
+    # Business scenario filters are applied before model fitting so the
+    # Logistic Regression and Decision Tree describe the same eligible pool.
+    country_df = country_df[
+        (country_df["followers"] >= min_followers)
+        & (country_df["engagement_rate"] >= min_engagement)
+    ].copy()
+
     if len(country_df) < 20:
-        raise ValueError(f"Not enough creators in country filter: {country}")
+        raise ValueError(
+            "Not enough creators after scenario filters. "
+            "Lower Minimum Followers or Minimum Engagement."
+        )
 
     brand_weight = round(_normalize_brand_weight(brand_weight), 2)
     df = enrich_context(country_df, brand, campaign, brand_weight)
@@ -444,7 +462,7 @@ def train_context(
     # tree stable while allowing a meaningful Korea-only tree (~300 records).
     min_leaf = max(8, min(120, int(round(len(df) * 0.08))))
     tree = DecisionTreeClassifier(
-        max_depth=4,
+        max_depth=tree_depth,
         min_samples_leaf=min_leaf,
         class_weight="balanced",
         random_state=42,
@@ -473,8 +491,19 @@ def score_creators(
     platform: str = "All",
     country: str = "All",
     brand_weight: float = DEFAULT_BRAND_WEIGHT,
+    min_followers: int = 0,
+    min_engagement: float = 0.0,
+    tree_depth: int = 4,
 ) -> tuple[ContextModel, pd.DataFrame]:
-    model = train_context(brand, campaign, country, round(_normalize_brand_weight(brand_weight), 2))
+    model = train_context(
+        brand,
+        campaign,
+        country,
+        round(_normalize_brand_weight(brand_weight), 2),
+        int(min_followers),
+        round(float(min_engagement), 2),
+        int(tree_depth),
+    )
     scored = model.scored.copy()
 
     if platform and platform != "All":
@@ -518,7 +547,7 @@ def _format_actual(feature: str, value: float) -> str:
     return _format_threshold(feature, value)
 
 
-def export_tree(model: DecisionTreeClassifier) -> dict:
+def export_tree(model: DecisionTreeClassifier, decision_threshold: float = 0.50) -> dict:
     tree_ = model.tree_
 
     def node_dict(node_id: int, depth: int = 0) -> dict:
@@ -537,7 +566,7 @@ def export_tree(model: DecisionTreeClassifier) -> dict:
         }
 
         if left == right:
-            item["label"] = "Suitable" if positive_prob >= 0.5 else "Not Suitable"
+            item["label"] = "Suitable" if positive_prob >= decision_threshold else "Not Suitable"
             return item
 
         feature = FEATURES[int(tree_.feature[node_id])]
@@ -627,7 +656,7 @@ def logistic_explanation(model: ContextModel, row: pd.DataFrame) -> dict:
     }
 
 
-def explain_creator(model: ContextModel, scored: pd.DataFrame, handle: str) -> dict:
+def explain_creator(model: ContextModel, scored: pd.DataFrame, handle: str, decision_threshold: float = 0.50) -> dict:
     if scored.empty:
         raise ValueError("No creators available for this filter.")
 
@@ -665,17 +694,19 @@ def explain_creator(model: ContextModel, scored: pd.DataFrame, handle: str) -> d
     tree_proba = model.tree.predict_proba(values)[0]
     positive_index = tree_classes.index(1) if 1 in tree_classes else len(tree_classes) - 1
     tree_positive_probability = float(tree_proba[positive_index])
-    tree_prediction = int(model.tree.predict(values)[0])
+    decision_threshold = float(np.clip(float(decision_threshold), 0.0, 1.0))
+    tree_prediction = int(tree_positive_probability >= decision_threshold)
     selected.update({
         "leaf_id": leaf_id,
         "decision_path": path_steps,
         "path_node_ids": [int(x) for x in path],
         "tree_positive_probability": tree_positive_probability,
         "tree_prediction": tree_prediction,
+        "decision_threshold": decision_threshold,
     })
     return {
         "selected": selected,
-        "tree": export_tree(model.tree),
+        "tree": export_tree(model.tree, decision_threshold),
         "logistic_explanation": logistic_explanation(model, row),
     }
 

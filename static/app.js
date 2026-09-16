@@ -51,30 +51,98 @@ function showToast(text){
   const t=$('toast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400);
 }
 
-let weightTimer = null;
+let scenarioTimer = null;
+const FOLLOWER_STEPS = [0, 10000, 50000, 100000, 500000, 1000000, 5000000, 10000000];
 
-function ensureWeightSlider(){
-  if($('brandWeight')) return;
+function minFollowersValue(){
+  const idx = Math.max(0, Math.min(FOLLOWER_STEPS.length-1, Number($('minFollowers')?.value || 0)));
+  return FOLLOWER_STEPS[idx];
+}
+
+function scenarioValues(){
+  const brandPct = Number($('brandWeight')?.value ?? 50);
+  return {
+    brandWeight: brandPct / 100,
+    minFollowers: minFollowersValue(),
+    minEngagement: Number($('minEngagement')?.value ?? 0),
+    decisionThreshold: Number($('decisionThreshold')?.value ?? 50) / 100,
+    treeDepth: Number($('treeDepth')?.value ?? 4),
+  };
+}
+
+function updateScenarioLabels(){
+  const v=scenarioValues();
+  const brandPct=Math.round(v.brandWeight*100);
+  if($('brandWeightLabel')) $('brandWeightLabel').textContent=`${brandPct}%`;
+  if($('campaignWeightLabel')) $('campaignWeightLabel').textContent=`${100-brandPct}%`;
+  if($('minFollowersLabel')) $('minFollowersLabel').textContent=v.minFollowers===0?'Any':fmtCompact(v.minFollowers);
+  if($('minEngagementLabel')) $('minEngagementLabel').textContent=`${v.minEngagement.toFixed(1)}%`;
+  if($('decisionThresholdLabel')) $('decisionThresholdLabel').textContent=`${Math.round(v.decisionThreshold*100)}%`;
+  if($('treeDepthLabel')) $('treeDepthLabel').textContent=`Depth ${v.treeDepth}`;
+  if($('fitMethod')) $('fitMethod').textContent=`${brandPct}% Brand + ${100-brandPct}% Campaign`;
+}
+
+function scheduleScenarioRun(){
+  updateScenarioLabels();
+  clearTimeout(scenarioTimer);
+  scenarioTimer=setTimeout(()=>runAnalysis(null),280);
+}
+
+function ensureScenarioSliders(){
+  if($('scenarioControls')) return;
   const host = $('fitMethod')?.parentElement || $('runBtn')?.parentElement;
   if(!host) return;
+
   const wrap=document.createElement('div');
-  wrap.id='weightControl';
-  wrap.style.cssText='margin-top:10px;padding:10px 12px;border:1px solid #2f3a50;border-radius:10px;background:#101827';
+  wrap.id='scenarioControls';
+  wrap.style.cssText='margin-top:10px;padding:12px;border:1px solid #2f3a50;border-radius:12px;background:#101827;display:grid;gap:11px';
   wrap.innerHTML=`
-    <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:6px">
-      <span>Brand weight <b id="brandWeightLabel">50%</b></span>
-      <span>Campaign weight <b id="campaignWeightLabel">50%</b></span>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <b style="font-size:12px">Scenario Controls</b>
+      <span style="font-size:10px;color:#91a0ba">drag sliders to re-run analysis</span>
     </div>
-    <input id="brandWeight" type="range" min="0" max="100" step="5" value="50" style="width:100%">`;
+
+    <div>
+      <div style="display:flex;justify-content:space-between;gap:12px;font-size:11px;margin-bottom:4px">
+        <span>Brand <b id="brandWeightLabel">50%</b></span>
+        <span>Campaign <b id="campaignWeightLabel">50%</b></span>
+      </div>
+      <input id="brandWeight" type="range" min="0" max="100" step="5" value="50" style="width:100%">
+    </div>
+
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+        <span>Minimum Followers</span><b id="minFollowersLabel">Any</b>
+      </div>
+      <input id="minFollowers" type="range" min="0" max="7" step="1" value="0" style="width:100%">
+    </div>
+
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+        <span>Minimum Engagement</span><b id="minEngagementLabel">0.0%</b>
+      </div>
+      <input id="minEngagement" type="range" min="0" max="10" step="0.5" value="0" style="width:100%">
+    </div>
+
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+        <span>Suitable Threshold</span><b id="decisionThresholdLabel">50%</b>
+      </div>
+      <input id="decisionThreshold" type="range" min="30" max="80" step="5" value="50" style="width:100%">
+    </div>
+
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+        <span>Decision Tree Complexity</span><b id="treeDepthLabel">Depth 4</b>
+      </div>
+      <input id="treeDepth" type="range" min="2" max="6" step="1" value="4" style="width:100%">
+    </div>`;
+
   host.appendChild(wrap);
-  $('brandWeight').addEventListener('input',()=>{
-    const v=Number($('brandWeight').value);
-    $('brandWeightLabel').textContent=`${v}%`;
-    $('campaignWeightLabel').textContent=`${100-v}%`;
-    if($('fitMethod')) $('fitMethod').textContent=`${v}% Brand + ${100-v}% Campaign`;
-    clearTimeout(weightTimer);
-    weightTimer=setTimeout(()=>runAnalysis(current?.selected?.handle || null),250);
+  ['brandWeight','minFollowers','minEngagement','decisionThreshold','treeDepth'].forEach(id=>{
+    $(id).addEventListener('input', scheduleScenarioRun);
   });
+  updateScenarioLabels();
 }
 
 async function init(){
@@ -84,7 +152,7 @@ async function init(){
   fillSelect('brand', o.brands); fillSelect('country', o.countries); fillSelect('campaign', o.campaigns); fillSelect('platform', o.platforms);
   $('brand').value='BVLGARI'; $('country').value='KR'; $('campaign').value='Luxury / Fashion'; $('platform').value='Instagram';
   $('runBtn').addEventListener('click',()=>runAnalysis());
-  ensureWeightSlider();
+  ensureScenarioSliders();
   await runAnalysis();
 }
 function fillSelect(id, values){ $(id).innerHTML = values.map(v=>`<option>${escapeHtml(v)}</option>`).join(''); }
@@ -92,8 +160,18 @@ function fillSelect(id, values){ $(id).innerHTML = values.map(v=>`<option>${esca
 async function runAnalysis(selectedHandle=null){
   const btn=$('runBtn'); btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Analyzing…';
   try{
-    const brandWeight = $('brandWeight') ? Number($('brandWeight').value)/100 : 0.50;
-    const p = new URLSearchParams({brand:$('brand').value,country:$('country').value,campaign:$('campaign').value,platform:$('platform').value,brand_weight:String(brandWeight)});
+    const sv=scenarioValues();
+    const p = new URLSearchParams({
+      brand:$('brand').value,
+      country:$('country').value,
+      campaign:$('campaign').value,
+      platform:$('platform').value,
+      brand_weight:String(sv.brandWeight),
+      min_followers:String(sv.minFollowers),
+      min_engagement:String(sv.minEngagement),
+      decision_threshold:String(sv.decisionThreshold),
+      tree_depth:String(sv.treeDepth)
+    });
     if(selectedHandle) p.set('selected_handle',selectedHandle);
     const r=await fetch('/api/analyze?'+p.toString());
     if(!r.ok) throw new Error((await r.json()).detail || 'Analysis failed');
@@ -109,11 +187,18 @@ function renderAll(){
   $('repairedRows').textContent = current.repaired_rows.toLocaleString();
   $('contextLabel').textContent = `${current.context.brand} · ${current.context.country} · ${current.context.platform} · ${current.context.campaign}`;
   if($('fitMethod')) $('fitMethod').textContent = current.fit_method?.label || '50% Brand + 50% Campaign';
-  if($('brandWeight') && current.fit_method){
-    const bw=Math.round(Number(current.fit_method.brand_weight)*100);
-    $('brandWeight').value=String(bw);
-    if($('brandWeightLabel')) $('brandWeightLabel').textContent=`${bw}%`;
-    if($('campaignWeightLabel')) $('campaignWeightLabel').textContent=`${100-bw}%`;
+  if(current.context){
+    if($('brandWeight')) $('brandWeight').value=String(Math.round(Number(current.context.brand_weight ?? 0.5)*100));
+    if($('minFollowers')){
+      const target=Number(current.context.min_followers ?? 0);
+      let idx=FOLLOWER_STEPS.indexOf(target);
+      if(idx<0) idx=0;
+      $('minFollowers').value=String(idx);
+    }
+    if($('minEngagement')) $('minEngagement').value=String(Number(current.context.min_engagement ?? 0));
+    if($('decisionThreshold')) $('decisionThreshold').value=String(Math.round(Number(current.context.decision_threshold ?? 0.5)*100));
+    if($('treeDepth')) $('treeDepth').value=String(Number(current.context.tree_depth ?? 4));
+    updateScenarioLabels();
   }
   renderTop3();
   renderRanking();
@@ -199,10 +284,10 @@ function renderLogisticExplanation(){
     <div class="mini-row total"><span>Total z</span><strong>${Number(e.logit).toFixed(3)}</strong></div>
     <div class="mini-row total"><span>Probability</span><strong>${(e.probability*100).toFixed(2)}%</strong></div>`;
 
-  renderSigmoid(e.logit,e.probability);
+  renderSigmoid(e.logit,e.probability,Number(current.context?.decision_threshold ?? 0.5));
 }
 
-function renderSigmoid(logit, probability){
+function renderSigmoid(logit, probability, decisionThreshold=0.5){
   const svg=$('sigmoidSvg');
   svg.innerHTML='';
   const NS='http://www.w3.org/2000/svg';
@@ -221,6 +306,8 @@ function renderSigmoid(logit, probability){
   [0,.25,.5,.75,1].forEach(v=>{line(L,Y(v),W-R,Y(v),'#253045');text(L-6,Y(v)+3,v.toFixed(v===0||v===1?0:2),8,'#8a97ae','end');});
   [-6,-4,-2,0,2,4,6].forEach(v=>{line(X(v),T,X(v),H-B,'#1d2637');text(X(v),H-17,String(v),8);});
   line(L,T,L,H-B,'#54617a',1.1); line(L,H-B,W-R,H-B,'#54617a',1.1);
+  line(L,Y(decisionThreshold),W-R,Y(decisionThreshold),'#d0a15f',1,'5 4');
+  text(W-R-2,Y(decisionThreshold)-5,`threshold ${Math.round(decisionThreshold*100)}%`,8,'#d0a15f','end','600');
 
   let d='';
   for(let i=0;i<=120;i++){
@@ -245,7 +332,7 @@ function renderDecisionPath(){
   const s=current.selected;
   $('decisionPath').innerHTML=s.decision_path.map((p,i)=>`
     <div class="path-step"><span class="path-num">${i+1}</span><div><b>${escapeHtml(p.feature_label)}</b> ${p.operator} ${escapeHtml(p.threshold_label)}<br><span style="color:#a3afc4">Actual: ${escapeHtml(p.actual_label)}</span></div></div>`).join('')+
-    `<div class="result">→ ${escapeHtml(leafLabelForSelected())} · Tree P(positive) ${(Number(s.tree_positive_probability||0)*100).toFixed(1)}%</div>`;
+    `<div class="result">→ ${escapeHtml(leafLabelForSelected())} · Tree P(positive) ${(Number(s.tree_positive_probability||0)*100).toFixed(1)}% · threshold ${Math.round(Number(current.context?.decision_threshold ?? 0.5)*100)}%</div>`;
 }
 function leafLabelForSelected(){
   const leaf=findNode(current.tree,current.selected.leaf_id);
@@ -272,8 +359,10 @@ function renderSelected(){
     </div>`;
   const bw=Math.round(Number(current.fit_method?.brand_weight ?? 0.5)*100);
   const cw=100-bw;
-  const disagreement = (s.selection_probability>=0.5) !== (Number(s.tree_prediction)===1);
-  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b>. Logistic Regression supplies the ranking probability. The Decision Tree is a separate, coarser model trained on the same proxy target, so its classification can differ${disagreement?' <b>(this creator is a disagreement case)</b>':''}. Brand Fit currently uses <b>${bw}% Brand + ${cw}% Campaign</b>; move the slider to run a new scenario.`;
+  const dt=Number(current.context?.decision_threshold ?? 0.5);
+  const disagreement = (s.selection_probability>=dt) !== (Number(s.tree_prediction)===1);
+  const followerText=Number(current.context?.min_followers||0)>0 ? fmtCompact(Number(current.context.min_followers)) : 'Any';
+  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b>. Logistic Regression supplies the ranking probability; the Decision Tree is a separate rule-based approximation and can disagree${disagreement?' <b>(disagreement case)</b>':''}. Current scenario: <b>${bw}% Brand + ${cw}% Campaign</b>, minimum followers <b>${followerText}</b>, minimum engagement <b>${Number(current.context?.min_engagement||0).toFixed(1)}%</b>, suitable threshold <b>${Math.round(dt*100)}%</b>, tree depth <b>${Number(current.context?.tree_depth||4)}</b>.`;
 }
 
 function findNode(n,id){ if(n.id===id) return n; if(n.is_leaf) return null; return findNode(n.left,id)||findNode(n.right,id); }
