@@ -90,55 +90,206 @@ function scheduleScenarioRun(){
 
 function ensureScenarioSliders(){
   if($('scenarioControls')) return;
-  const host = $('fitMethod')?.parentElement || $('runBtn')?.parentElement;
+
+  // Put the scenario controls in a full-width row immediately above the Top 3
+  // section instead of inside the narrow Model Summary card.
+  const top3 = $('top3');
+  const top3Section = top3?.closest('section') || top3?.parentElement?.parentElement;
+  const host = top3Section?.parentElement || document.body;
   if(!host) return;
 
-  const wrap=document.createElement('div');
+  if(!$('scenarioControlStyles')){
+    const style=document.createElement('style');
+    style.id='scenarioControlStyles';
+    style.textContent=`
+      #scenarioControls{
+        width:100%;
+        box-sizing:border-box;
+        margin:14px 0 18px;
+        padding:16px 18px 18px;
+        border:1px solid #334158;
+        border-radius:15px;
+        background:linear-gradient(180deg,#121b2b 0%,#0e1725 100%);
+        box-shadow:0 8px 24px rgba(0,0,0,.16);
+      }
+      #scenarioControls .scenario-head{
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-end;
+        gap:16px;
+        margin-bottom:14px;
+      }
+      #scenarioControls .scenario-title{
+        font-size:14px;
+        font-weight:800;
+        color:#f3f6fb;
+        letter-spacing:.1px;
+      }
+      #scenarioControls .scenario-help{
+        font-size:11px;
+        color:#91a0ba;
+        white-space:nowrap;
+      }
+      #scenarioControls .scenario-grid{
+        display:grid;
+        grid-template-columns:repeat(5,minmax(175px,1fr));
+        gap:14px;
+      }
+      #scenarioControls .scenario-card{
+        min-width:0;
+        padding:12px 13px 13px;
+        border:1px solid #28354a;
+        border-radius:12px;
+        background:#101a2a;
+      }
+      #scenarioControls .scenario-label{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:10px;
+        margin-bottom:10px;
+        color:#cdd6e6;
+        font-size:11px;
+        line-height:1.25;
+      }
+      #scenarioControls .scenario-label strong{
+        color:#f1c678;
+        font-size:13px;
+        font-weight:800;
+        white-space:nowrap;
+      }
+      #scenarioControls .weight-pair{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:12px;
+        margin-bottom:10px;
+        color:#cdd6e6;
+        font-size:11px;
+      }
+      #scenarioControls .weight-pair b{
+        color:#f1c678;
+        font-size:13px;
+      }
+      #scenarioControls input[type="range"]{
+        -webkit-appearance:none;
+        appearance:none;
+        width:100%;
+        height:24px;
+        margin:0;
+        padding:0;
+        background:transparent;
+        cursor:pointer;
+      }
+      #scenarioControls input[type="range"]::-webkit-slider-runnable-track{
+        height:7px;
+        border-radius:999px;
+        background:linear-gradient(90deg,#d7a358,#b56a77 52%,#765cff);
+        border:1px solid rgba(255,255,255,.08);
+      }
+      #scenarioControls input[type="range"]::-webkit-slider-thumb{
+        -webkit-appearance:none;
+        appearance:none;
+        width:20px;
+        height:20px;
+        margin-top:-7px;
+        border-radius:50%;
+        background:#fff4de;
+        border:3px solid #d49b50;
+        box-shadow:0 0 0 3px rgba(212,155,80,.16),0 2px 7px rgba(0,0,0,.5);
+      }
+      #scenarioControls input[type="range"]::-moz-range-track{
+        height:7px;
+        border-radius:999px;
+        background:linear-gradient(90deg,#d7a358,#b56a77 52%,#765cff);
+        border:1px solid rgba(255,255,255,.08);
+      }
+      #scenarioControls input[type="range"]::-moz-range-thumb{
+        width:18px;
+        height:18px;
+        border-radius:50%;
+        background:#fff4de;
+        border:3px solid #d49b50;
+        box-shadow:0 0 0 3px rgba(212,155,80,.16),0 2px 7px rgba(0,0,0,.5);
+      }
+      #scenarioControls .range-hint{
+        display:flex;
+        justify-content:space-between;
+        margin-top:5px;
+        color:#66758e;
+        font-size:9px;
+      }
+      @media (max-width:1250px){
+        #scenarioControls .scenario-grid{grid-template-columns:repeat(3,minmax(190px,1fr));}
+      }
+      @media (max-width:820px){
+        #scenarioControls .scenario-grid{grid-template-columns:1fr;}
+        #scenarioControls .scenario-head{align-items:flex-start;flex-direction:column;}
+        #scenarioControls .scenario-help{white-space:normal;}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const wrap=document.createElement('section');
   wrap.id='scenarioControls';
-  wrap.style.cssText='margin-top:10px;padding:12px;border:1px solid #2f3a50;border-radius:12px;background:#101827;display:grid;gap:11px';
   wrap.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-      <b style="font-size:12px">Scenario Controls</b>
-      <span style="font-size:10px;color:#91a0ba">drag sliders to re-run analysis</span>
+    <div class="scenario-head">
+      <div>
+        <div class="scenario-title"><i class="fa-solid fa-sliders"></i> Scenario & Model Controls</div>
+      </div>
+      <div class="scenario-help">Move a slider to re-run the analysis automatically</div>
     </div>
 
-    <div>
-      <div style="display:flex;justify-content:space-between;gap:12px;font-size:11px;margin-bottom:4px">
-        <span>Brand <b id="brandWeightLabel">50%</b></span>
-        <span>Campaign <b id="campaignWeightLabel">50%</b></span>
+    <div class="scenario-grid">
+      <div class="scenario-card">
+        <div class="weight-pair">
+          <span>Brand <b id="brandWeightLabel">50%</b></span>
+          <span>Campaign <b id="campaignWeightLabel">50%</b></span>
+        </div>
+        <input id="brandWeight" type="range" min="0" max="100" step="5" value="50">
+        <div class="range-hint"><span>Brand-driven</span><span>Balanced</span><span>Campaign-driven</span></div>
       </div>
-      <input id="brandWeight" type="range" min="0" max="100" step="5" value="50" style="width:100%">
-    </div>
 
-    <div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-        <span>Minimum Followers</span><b id="minFollowersLabel">Any</b>
+      <div class="scenario-card">
+        <div class="scenario-label">
+          <span>Minimum Followers</span><strong id="minFollowersLabel">Any</strong>
+        </div>
+        <input id="minFollowers" type="range" min="0" max="7" step="1" value="0">
+        <div class="range-hint"><span>Any</span><span>500K</span><span>10M</span></div>
       </div>
-      <input id="minFollowers" type="range" min="0" max="7" step="1" value="0" style="width:100%">
-    </div>
 
-    <div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-        <span>Minimum Engagement</span><b id="minEngagementLabel">0.0%</b>
+      <div class="scenario-card">
+        <div class="scenario-label">
+          <span>Minimum Engagement</span><strong id="minEngagementLabel">0.0%</strong>
+        </div>
+        <input id="minEngagement" type="range" min="0" max="10" step="0.5" value="0">
+        <div class="range-hint"><span>0%</span><span>5%</span><span>10%</span></div>
       </div>
-      <input id="minEngagement" type="range" min="0" max="10" step="0.5" value="0" style="width:100%">
-    </div>
 
-    <div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-        <span>Suitable Threshold</span><b id="decisionThresholdLabel">50%</b>
+      <div class="scenario-card">
+        <div class="scenario-label">
+          <span>Suitable Threshold</span><strong id="decisionThresholdLabel">50%</strong>
+        </div>
+        <input id="decisionThreshold" type="range" min="30" max="80" step="5" value="50">
+        <div class="range-hint"><span>30%</span><span>55%</span><span>80%</span></div>
       </div>
-      <input id="decisionThreshold" type="range" min="30" max="80" step="5" value="50" style="width:100%">
-    </div>
 
-    <div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-        <span>Decision Tree Complexity</span><b id="treeDepthLabel">Depth 4</b>
+      <div class="scenario-card">
+        <div class="scenario-label">
+          <span>Decision Tree Complexity</span><strong id="treeDepthLabel">Depth 4</strong>
+        </div>
+        <input id="treeDepth" type="range" min="2" max="6" step="1" value="4">
+        <div class="range-hint"><span>Simple · 2</span><span>4</span><span>Complex · 6</span></div>
       </div>
-      <input id="treeDepth" type="range" min="2" max="6" step="1" value="4" style="width:100%">
     </div>`;
 
-  host.appendChild(wrap);
+  if(top3Section && top3Section.parentElement===host){
+    host.insertBefore(wrap, top3Section);
+  }else{
+    host.prepend(wrap);
+  }
+
   ['brandWeight','minFollowers','minEngagement','decisionThreshold','treeDepth'].forEach(id=>{
     $(id).addEventListener('input', scheduleScenarioRun);
   });
