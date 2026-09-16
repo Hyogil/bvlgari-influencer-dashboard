@@ -53,6 +53,7 @@ def analyze(
     platform: str = Query("Instagram"),
     country: str = Query("KR"),
     selected_handle: str | None = Query(None),
+    brand_weight: float = Query(0.50, ge=0.0, le=1.0),
 ):
     if brand not in BRAND_PROFILES:
         raise HTTPException(400, f"Unknown brand: {brand}")
@@ -62,7 +63,7 @@ def analyze(
         raise HTTPException(400, f"Unknown country: {country}")
 
     try:
-        model, scored = score_creators(brand, campaign, platform, country)
+        model, scored = score_creators(brand, campaign, platform, country, brand_weight)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -78,14 +79,13 @@ def analyze(
         raise HTTPException(404, str(exc)) from exc
 
     return {
-        "context": {"brand": brand, "campaign": campaign, "platform": platform, "country": country},
+        "context": {"brand": brand, "campaign": campaign, "platform": platform, "country": country, "brand_weight": brand_weight, "campaign_weight": 1.0 - brand_weight},
         "sample_size": int(len(scored)),
         "training_size": int(model.training_size),
         "dataset_size": int(len(DATA.creators)),
         "repaired_rows": int(DATA.repaired_rows),
-        "fit_method": fit_method_summary(),
+        "fit_method": fit_method_summary(brand_weight),
         "target_type": "proxy",
-        "fit_method": fit_method_summary(),
         "proxy_positive_rate": model.proxy_positive_rate,
         "top10": top_records(scored, 10),
         **explanation,

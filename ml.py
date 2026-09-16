@@ -32,8 +32,7 @@ FEATURE_LABELS = {
     "verified_flag": "Verified Creator",
 }
 
-BRAND_WEIGHT = 0.50
-CAMPAIGN_WEIGHT = 0.50
+DEFAULT_BRAND_WEIGHT = 0.50
 FIT_SCALE_LABEL = "Ordinal 5-level heuristic scale (1.00 / 0.75 / 0.50 / 0.25 / 0.00)"
 
 BRAND_PROFILES: Dict[str, Dict[str, float]] = {
@@ -330,16 +329,32 @@ def _profile_score(niche: str, profile: Dict[str, float]) -> float:
     return 0.00
 
 
-def compute_brand_fit(niche: str, brand: str, campaign: str) -> float:
+def _normalize_brand_weight(brand_weight: float) -> float:
+    return float(np.clip(float(brand_weight), 0.0, 1.0))
+
+
+def compute_brand_fit(
+    niche: str,
+    brand: str,
+    campaign: str,
+    brand_weight: float = DEFAULT_BRAND_WEIGHT,
+) -> float:
+    brand_weight = _normalize_brand_weight(brand_weight)
+    campaign_weight = 1.0 - brand_weight
     brand_score = _profile_score(niche, BRAND_PROFILES[brand])
     campaign_score = _profile_score(niche, CAMPAIGN_PROFILES[campaign])
-    return float(np.clip(BRAND_WEIGHT * brand_score + CAMPAIGN_WEIGHT * campaign_score, 0.0, 1.0))
+    return float(np.clip(brand_weight * brand_score + campaign_weight * campaign_score, 0.0, 1.0))
 
 
-def enrich_context(df: pd.DataFrame, brand: str, campaign: str) -> pd.DataFrame:
+def enrich_context(
+    df: pd.DataFrame,
+    brand: str,
+    campaign: str,
+    brand_weight: float = DEFAULT_BRAND_WEIGHT,
+) -> pd.DataFrame:
     out = df.copy()
     out["brand_fit"] = out["niche"].map(
-        lambda n: compute_brand_fit(n, brand, campaign)
+        lambda n: compute_brand_fit(n, brand, campaign, brand_weight)
     )
     return out
 
@@ -389,8 +404,13 @@ def filter_country(df: pd.DataFrame, country: str) -> pd.DataFrame:
     return df[df["country_group"] == country].copy()
 
 
-@lru_cache(maxsize=96)
-def train_context(brand: str, campaign: str, country: str = "All") -> ContextModel:
+@lru_cache(maxsize=192)
+def train_context(
+    brand: str,
+    campaign: str,
+    country: str = "All",
+    brand_weight: float = DEFAULT_BRAND_WEIGHT,
+) -> ContextModel:
     if brand not in BRAND_PROFILES:
         raise ValueError(f"Unknown brand: {brand}")
     if campaign not in CAMPAIGN_PROFILES:
@@ -402,7 +422,8 @@ def train_context(brand: str, campaign: str, country: str = "All") -> ContextMod
     if len(country_df) < 20:
         raise ValueError(f"Not enough creators in country filter: {country}")
 
-    df = enrich_context(country_df, brand, campaign)
+    brand_weight = round(_normalize_brand_weight(brand_weight), 2)
+    df = enrich_context(country_df, brand, campaign, brand_weight)
     y = _proxy_target(df, brand, campaign)
     X = df[FEATURES]
 
@@ -451,8 +472,9 @@ def score_creators(
     campaign: str,
     platform: str = "All",
     country: str = "All",
+    brand_weight: float = DEFAULT_BRAND_WEIGHT,
 ) -> tuple[ContextModel, pd.DataFrame]:
-    model = train_context(brand, campaign, country)
+    model = train_context(brand, campaign, country, round(_normalize_brand_weight(brand_weight), 2))
     scored = model.scored.copy()
 
     if platform and platform != "All":
@@ -639,10 +661,17 @@ def explain_creator(model: ContextModel, scored: pd.DataFrame, handle: str) -> d
         })
 
     selected = creator_record(row.iloc[0])
+    tree_classes = list(model.tree.classes_)
+    tree_proba = model.tree.predict_proba(values)[0]
+    positive_index = tree_classes.index(1) if 1 in tree_classes else len(tree_classes) - 1
+    tree_positive_probability = float(tree_proba[positive_index])
+    tree_prediction = int(model.tree.predict(values)[0])
     selected.update({
         "leaf_id": leaf_id,
         "decision_path": path_steps,
         "path_node_ids": [int(x) for x in path],
+        "tree_positive_probability": tree_positive_probability,
+        "tree_prediction": tree_prediction,
     })
     return {
         "selected": selected,
@@ -651,11 +680,13 @@ def explain_creator(model: ContextModel, scored: pd.DataFrame, handle: str) -> d
     }
 
 
-def fit_method_summary() -> dict:
+def fit_method_summary(brand_weight: float = DEFAULT_BRAND_WEIGHT) -> dict:
+    brand_weight = _normalize_brand_weight(brand_weight)
+    campaign_weight = 1.0 - brand_weight
     return {
-        "brand_weight": BRAND_WEIGHT,
-        "campaign_weight": CAMPAIGN_WEIGHT,
-        "label": f"{int(BRAND_WEIGHT*100)}% Brand + {int(CAMPAIGN_WEIGHT*100)}% Campaign",
+        "brand_weight": brand_weight,
+        "campaign_weight": campaign_weight,
+        "label": f"{int(round(brand_weight*100))}% Brand + {int(round(campaign_weight*100))}% Campaign",
         "scale": FIT_SCALE_LABEL,
     }
 

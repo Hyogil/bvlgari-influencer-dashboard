@@ -51,6 +51,32 @@ function showToast(text){
   const t=$('toast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400);
 }
 
+let weightTimer = null;
+
+function ensureWeightSlider(){
+  if($('brandWeight')) return;
+  const host = $('fitMethod')?.parentElement || $('runBtn')?.parentElement;
+  if(!host) return;
+  const wrap=document.createElement('div');
+  wrap.id='weightControl';
+  wrap.style.cssText='margin-top:10px;padding:10px 12px;border:1px solid #2f3a50;border-radius:10px;background:#101827';
+  wrap.innerHTML=`
+    <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:6px">
+      <span>Brand weight <b id="brandWeightLabel">50%</b></span>
+      <span>Campaign weight <b id="campaignWeightLabel">50%</b></span>
+    </div>
+    <input id="brandWeight" type="range" min="0" max="100" step="5" value="50" style="width:100%">`;
+  host.appendChild(wrap);
+  $('brandWeight').addEventListener('input',()=>{
+    const v=Number($('brandWeight').value);
+    $('brandWeightLabel').textContent=`${v}%`;
+    $('campaignWeightLabel').textContent=`${100-v}%`;
+    if($('fitMethod')) $('fitMethod').textContent=`${v}% Brand + ${100-v}% Campaign`;
+    clearTimeout(weightTimer);
+    weightTimer=setTimeout(()=>runAnalysis(current?.selected?.handle || null),250);
+  });
+}
+
 async function init(){
   const r = await fetch('/api/options');
   if(!r.ok) throw new Error('Could not load dashboard options.');
@@ -58,6 +84,7 @@ async function init(){
   fillSelect('brand', o.brands); fillSelect('country', o.countries); fillSelect('campaign', o.campaigns); fillSelect('platform', o.platforms);
   $('brand').value='BVLGARI'; $('country').value='KR'; $('campaign').value='Luxury / Fashion'; $('platform').value='Instagram';
   $('runBtn').addEventListener('click',()=>runAnalysis());
+  ensureWeightSlider();
   await runAnalysis();
 }
 function fillSelect(id, values){ $(id).innerHTML = values.map(v=>`<option>${escapeHtml(v)}</option>`).join(''); }
@@ -65,7 +92,8 @@ function fillSelect(id, values){ $(id).innerHTML = values.map(v=>`<option>${esca
 async function runAnalysis(selectedHandle=null){
   const btn=$('runBtn'); btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Analyzing…';
   try{
-    const p = new URLSearchParams({brand:$('brand').value,country:$('country').value,campaign:$('campaign').value,platform:$('platform').value});
+    const brandWeight = $('brandWeight') ? Number($('brandWeight').value)/100 : 0.50;
+    const p = new URLSearchParams({brand:$('brand').value,country:$('country').value,campaign:$('campaign').value,platform:$('platform').value,brand_weight:String(brandWeight)});
     if(selectedHandle) p.set('selected_handle',selectedHandle);
     const r=await fetch('/api/analyze?'+p.toString());
     if(!r.ok) throw new Error((await r.json()).detail || 'Analysis failed');
@@ -81,6 +109,12 @@ function renderAll(){
   $('repairedRows').textContent = current.repaired_rows.toLocaleString();
   $('contextLabel').textContent = `${current.context.brand} · ${current.context.country} · ${current.context.platform} · ${current.context.campaign}`;
   if($('fitMethod')) $('fitMethod').textContent = current.fit_method?.label || '50% Brand + 50% Campaign';
+  if($('brandWeight') && current.fit_method){
+    const bw=Math.round(Number(current.fit_method.brand_weight)*100);
+    $('brandWeight').value=String(bw);
+    if($('brandWeightLabel')) $('brandWeightLabel').textContent=`${bw}%`;
+    if($('campaignWeightLabel')) $('campaignWeightLabel').textContent=`${100-bw}%`;
+  }
   renderTop3();
   renderRanking();
   renderLogisticExplanation();
@@ -211,7 +245,7 @@ function renderDecisionPath(){
   const s=current.selected;
   $('decisionPath').innerHTML=s.decision_path.map((p,i)=>`
     <div class="path-step"><span class="path-num">${i+1}</span><div><b>${escapeHtml(p.feature_label)}</b> ${p.operator} ${escapeHtml(p.threshold_label)}<br><span style="color:#a3afc4">Actual: ${escapeHtml(p.actual_label)}</span></div></div>`).join('')+
-    `<div class="result">→ ${escapeHtml(leafLabelForSelected())}</div>`;
+    `<div class="result">→ ${escapeHtml(leafLabelForSelected())} · Tree P(positive) ${(Number(s.tree_positive_probability||0)*100).toFixed(1)}%</div>`;
 }
 function leafLabelForSelected(){
   const leaf=findNode(current.tree,current.selected.leaf_id);
@@ -222,7 +256,7 @@ function renderSelected(){
   const s=current.selected;
   $('selectedInfo').innerHTML=`
     <div class="selected-head">
-      <img class="selected-avatar" src="${avatarUrl(s.handle)}" alt="Sample portrait for ${escapeAttr(s.handle)}" onerror="avatarFallback(this, \'${escapeAttr(s.handle)}\')">
+      <img class="selected-avatar" src="${avatarUrl(s.handle,s.platform)}" alt="${escapeAttr(s.handle)} profile" onerror="avatarFallback(this, \'${escapeAttr(s.handle)}\')">
       <div>
         <div class="selected-name">${escapeHtml(s.handle)} ${s.verified?'<span class="verified-chip"><i class="fa-solid fa-badge-check"></i> Verified</span>':''}</div>
         <div class="selected-display-name">${escapeHtml(safeName(s.name,s.handle))}</div>
@@ -234,8 +268,12 @@ function renderSelected(){
       <div><b>${s.brand_fit.toFixed(2)}</b>Brand fit</div>
       <div><b>${s.engagement_rate.toFixed(1)}%${s.engagement_imputed?'*':''}</b>Engagement${s.engagement_imputed?' (imputed)':''}</div>
       <div><b>${fmtCompact(s.followers)}</b>Followers</div>
+      <div><b>${(Number(s.tree_positive_probability||0)*100).toFixed(1)}%</b>Tree positive probability</div>
     </div>`;
-  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b>. Logistic Regression supplies the ranking probability; the formula panel shows the exact standardized-input arithmetic. The highlighted Decision Tree path provides a separate, rule-based explanation. Brand Fit uses a <b>balanced 50:50 weighting</b> between Brand Score and Campaign Score, based on a simple ordinal compatibility scale.`;
+  const bw=Math.round(Number(current.fit_method?.brand_weight ?? 0.5)*100);
+  const cw=100-bw;
+  const disagreement = (s.selection_probability>=0.5) !== (Number(s.tree_prediction)===1);
+  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b>. Logistic Regression supplies the ranking probability. The Decision Tree is a separate, coarser model trained on the same proxy target, so its classification can differ${disagreement?' <b>(this creator is a disagreement case)</b>':''}. Brand Fit currently uses <b>${bw}% Brand + ${cw}% Campaign</b>; move the slider to run a new scenario.`;
 }
 
 function findNode(n,id){ if(n.id===id) return n; if(n.is_leaf) return null; return findNode(n.left,id)||findNode(n.right,id); }
