@@ -352,6 +352,7 @@ function renderAll(){
     updateScenarioLabels();
   }
   renderTop3();
+  ensureDualRankingCards();
   renderRanking();
   renderLogisticExplanation();
   renderDecisionPath();
@@ -389,11 +390,102 @@ function renderTop3(){
   document.querySelectorAll('.creator-card').forEach(el=>el.addEventListener('click',()=>runAnalysis(el.dataset.handle)));
 }
 
-function renderRanking(){
+function findRankingCard(){
+  const list=$('ranking');
+  if(!list) return null;
+  let node=list.parentElement;
+  // Search only a few levels upward for the card that owns the ranking title.
+  for(let i=0;i<4 && node;i++,node=node.parentElement){
+    const heading=node.querySelector('h1,h2,h3,h4,.panel-title,.card-title');
+    if(heading && /Top\s*10|candidates by probability/i.test(heading.textContent||'')) return node;
+  }
+  return list.parentElement;
+}
+
+function ensureDualRankingCards(){
+  const logisticList=$('ranking');
+  if(!logisticList) return;
+
+  const logisticCard=findRankingCard();
+  if(logisticCard){
+    const heading=logisticCard.querySelector('h1,h2,h3,h4,.panel-title,.card-title');
+    if(heading) heading.textContent='Top 10 candidates by probability (Logistic Regression)';
+    const helper=[...logisticCard.querySelectorAll('p,small,.subtitle,.subtext')].find(
+      el => /candidate|probability|formula|Decision Tree/i.test(el.textContent||'')
+    );
+    if(helper) helper.textContent='Ranked by Logistic Regression selection probability. Click a creator to inspect the same creator across both models.';
+  }
+
+  if($('treeRankingCard')) return;
+
+  if(!$('dualRankingStyles')){
+    const style=document.createElement('style');
+    style.id='dualRankingStyles';
+    style.textContent=`
+      #treeRankingCard{
+        margin-top:14px;
+        padding:14px;
+        border:1px solid #2d3a50;
+        border-radius:15px;
+        background:linear-gradient(180deg,#111a2a 0%,#0d1624 100%);
+        box-sizing:border-box;
+      }
+      #treeRankingCard .dual-rank-title{
+        margin:0 0 4px;
+        color:#f3f6fb;
+        font-size:14px;
+        font-weight:800;
+      }
+      #treeRankingCard .dual-rank-sub{
+        margin:0 0 12px;
+        color:#91a0ba;
+        font-size:10px;
+        line-height:1.35;
+      }
+      #rankingTree{
+        display:grid;
+        gap:6px;
+      }
+      #treeRankingCard .rank-row{
+        width:100%;
+      }
+      #treeRankingCard .tree-prob-note{
+        color:#f1c678;
+        font-size:9px;
+        white-space:nowrap;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const card=document.createElement('section');
+  card.id='treeRankingCard';
+  card.innerHTML=`
+    <div class="dual-rank-title"><i class="fa-solid fa-code-branch"></i> Top 10 candidates by probability (Decision Tree)</div>
+    <div class="dual-rank-sub">Ranked by the positive-class probability of the Decision Tree leaf. Ties are broken by Brand Fit, Engagement, then Followers.</div>
+    <div id="rankingTree"></div>
+  `;
+
+  // Keep the second ranking visually paired with the current ranking card.
+  // If we can identify the original card, place it immediately after it.
+  const anchor=logisticCard || logisticList.parentElement;
+  if(anchor && anchor.parentElement){
+    anchor.insertAdjacentElement('afterend',card);
+  }else{
+    logisticList.insertAdjacentElement('afterend',card);
+  }
+}
+
+function rankingRowHtml(c, i, method){
   const selectedHandle=current.selected.handle;
-  $('ranking').innerHTML=current.top10.map((c,i)=>`
+  const isTree=method==='tree';
+  const probability=isTree ? Number(c.tree_probability||0) : Number(c.selection_probability||0);
+  const rank=isTree ? Number(c.tree_rank||i+1) : Number(c.rank||i+1);
+  const methodText=isTree ? 'Decision Tree' : 'Logistic Regression';
+
+  return `
     <button type="button" class="rank-row ${c.handle===selectedHandle?'active':''}" data-handle="${escapeAttr(c.handle)}" aria-label="Inspect ${escapeAttr(c.handle)}">
-      <div class="rank-num">${i+1}</div>
+      <div class="rank-num">${rank}</div>
       <div class="rank-info">
         <img class="rank-avatar" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, \'${escapeAttr(c.handle)}\')">
         <div>
@@ -401,17 +493,34 @@ function renderRanking(){
           <div class="rank-sub">${escapeHtml(safeName(c.name,c.handle))} · ${escapeHtml(c.niche)} · ${escapeHtml(c.platform)}</div>
         </div>
       </div>
-      <div class="bar-bg"><div class="bar" style="width:${Math.max(2,c.selection_probability*100)}%"></div></div>
-      <div class="rank-pct">${(c.selection_probability*100).toFixed(1)}%</div>
-    </button>`).join('');
+      <div class="bar-bg"><div class="bar" style="width:${Math.max(2,probability*100)}%"></div></div>
+      <div class="rank-pct">${(probability*100).toFixed(1)}%</div>
+    </button>`;
+}
 
-  document.querySelectorAll('.rank-row').forEach(el=>{
+function bindRankingClicks(containerSelector){
+  document.querySelectorAll(`${containerSelector} .rank-row`).forEach(el=>{
     el.addEventListener('click', async ()=>{
       const handle=el.dataset.handle;
       if(!handle || handle===current.selected.handle) return;
       await runAnalysis(handle);
     });
   });
+}
+
+function renderRanking(){
+  const logistic=current.top10_logistic || current.top10 || [];
+  const tree=current.top10_tree || [];
+
+  $('ranking').innerHTML=logistic.map((c,i)=>rankingRowHtml(c,i,'logistic')).join('');
+
+  const treeContainer=$('rankingTree');
+  if(treeContainer){
+    treeContainer.innerHTML=tree.map((c,i)=>rankingRowHtml(c,i,'tree')).join('');
+  }
+
+  bindRankingClicks('#ranking');
+  bindRankingClicks('#rankingTree');
 }
 
 function renderLogisticExplanation(){

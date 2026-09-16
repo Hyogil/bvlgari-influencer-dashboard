@@ -111,7 +111,10 @@ def analyze(
         "fit_method": fit_method_summary(brand_weight),
         "target_type": "proxy",
         "proxy_positive_rate": model.proxy_positive_rate,
-        "top10": top_records(scored, 10),
+        # Backward-compatible alias: top10 remains Logistic Regression ranking.
+        "top10": top_records(scored, 10, "logistic"),
+        "top10_logistic": top_records(scored, 10, "logistic"),
+        "top10_tree": top_records(scored, 10, "tree"),
         **explanation,
     }
 

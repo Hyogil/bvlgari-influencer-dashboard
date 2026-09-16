@@ -510,11 +510,32 @@ def score_creators(
         platform_key = platform.strip().lower()
         scored = scored[scored["platform"] == platform_key].copy()
 
+    # Decision Tree probability for each creator.
+    # This is the positive-class probability of the terminal leaf reached
+    # by the creator, so multiple creators can legitimately share the same
+    # probability when they land in the same leaf.
+    if not scored.empty:
+        tree_classes = list(model.tree.classes_)
+        positive_index = tree_classes.index(1) if 1 in tree_classes else len(tree_classes) - 1
+        scored["tree_probability"] = model.tree.predict_proba(scored[FEATURES])[:, positive_index]
+    else:
+        scored["tree_probability"] = pd.Series(dtype=float)
+
+    # Primary/logistic rank remains the dashboard's main ranking.
     scored = scored.sort_values(
         ["selection_probability", "brand_fit", "engagement_rate", "followers"],
         ascending=[False, False, False, False],
     ).reset_index(drop=True)
     scored["rank"] = np.arange(1, len(scored) + 1)
+
+    # Keep an independent Decision Tree rank on the same rows.
+    tree_order = scored.sort_values(
+        ["tree_probability", "brand_fit", "engagement_rate", "followers"],
+        ascending=[False, False, False, False],
+    ).index.tolist()
+    tree_rank_map = {idx: rank for rank, idx in enumerate(tree_order, start=1)}
+    scored["tree_rank"] = [tree_rank_map[idx] for idx in scored.index]
+
     return model, scored
 
 
@@ -599,12 +620,24 @@ def creator_record(row: pd.Series) -> dict:
         "location": str(row.get("location", "")) if pd.notna(row.get("location", "")) else "",
         "brand_fit": float(row["brand_fit"]),
         "selection_probability": float(row["selection_probability"]),
+        "tree_probability": float(row.get("tree_probability", 0.0)),
         "rank": int(row["rank"]),
+        "tree_rank": int(row.get("tree_rank", row["rank"])),
     }
 
 
-def top_records(scored: pd.DataFrame, n: int = 10) -> List[dict]:
-    return [creator_record(row) for _, row in scored.head(n).iterrows()]
+def top_records(scored: pd.DataFrame, n: int = 10, method: str = "logistic") -> List[dict]:
+    if method == "tree":
+        ranked = scored.sort_values(
+            ["tree_probability", "brand_fit", "engagement_rate", "followers"],
+            ascending=[False, False, False, False],
+        ).head(n)
+    else:
+        ranked = scored.sort_values(
+            ["selection_probability", "brand_fit", "engagement_rate", "followers"],
+            ascending=[False, False, False, False],
+        ).head(n)
+    return [creator_record(row) for _, row in ranked.iterrows()]
 
 
 def logistic_explanation(model: ContextModel, row: pd.DataFrame) -> dict:
