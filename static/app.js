@@ -1,548 +1,60 @@
-const $ = (id) => document.getElementById(id);
+const $ = id => document.getElementById(id);
 let current = null;
+let selectedHandle = null;
+let runTimer = null;
+const FOLLOWER_STEPS=[0,10_000,50_000,100_000,500_000,1_000_000,5_000_000,10_000_000];
 
-function fmtCompact(n){
-  if(n >= 1_000_000) return (n/1_000_000).toFixed(n>=10_000_000?0:1).replace('.0','')+'M';
-  if(n >= 1_000) return (n/1_000).toFixed(n>=100_000?0:1).replace('.0','')+'K';
-  return String(Math.round(n));
-}
-function fmtSigned(n, digits=3){ return `${n>=0?'+':''}${Number(n).toFixed(digits)}`; }
-function initials(handle){
-  return handle.replace('@','').split(/[._-]/).slice(0,2).map(x=>x[0]?.toUpperCase()||'').join('').slice(0,2) || 'IN';
-}
-function safeName(name, handle){
-  if(!name || name === 'nan') return handle;
-  const odd = (name.match(/[\x80-\x9f]/g)||[]).length;
-  return odd >= 2 ? handle : name;
-}
-function hashCode(text){
-  let h = 0;
-  for(let i=0;i<text.length;i++) h = ((h<<5)-h) + text.charCodeAt(i);
-  return Math.abs(h);
-}
-function avatarFileName(handle){
-  return String(handle || '').replace(/^@/, '').replace(/[^a-zA-Z0-9._-]/g, '_') + '.jpg';
-}
-function avatarUrl(handle, platform){
-  const p = String(platform || '').toLowerCase();
-  const folder = p.includes('instagram') ? 'instagram'
-               : p.includes('tiktok') ? 'tiktok'
-               : p.includes('youtube') ? 'youtube'
-               : 'sample';
-  return `/Resource/images/${folder}/${encodeURIComponent(avatarFileName(handle))}`;
-}
-function sampleAvatarUrl(handle){
-  const idx = (hashCode(String(handle)) % 6) + 1;
-  return `/Resource/images/sample/sample-${idx}.svg`;
-}
-function avatarFallback(img, handle){
-  if(img.dataset.fallbackApplied === '1') return;
-  img.dataset.fallbackApplied = '1';
-  img.src = sampleAvatarUrl(handle);
-}
-function platformIcon(platform){
-  const p = String(platform || '').toLowerCase();
-  if(p.includes('instagram')) return '<i class="fa-brands fa-instagram"></i>';
-  if(p.includes('tiktok')) return '<i class="fa-brands fa-tiktok"></i>';
-  if(p.includes('youtube')) return '<i class="fa-brands fa-youtube"></i>';
-  return '<i class="fa-solid fa-user"></i>';
-}
-function showToast(text){
-  const t=$('toast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400);
-}
-
-let scenarioTimer = null;
-const FOLLOWER_STEPS = [0, 10000, 50000, 100000, 500000, 1000000, 5000000, 10000000];
-
-function minFollowersValue(){
-  const idx = Math.max(0, Math.min(FOLLOWER_STEPS.length-1, Number($('minFollowers')?.value || 0)));
-  return FOLLOWER_STEPS[idx];
-}
-
-function scenarioValues(){
-  const brandPct = Number($('brandWeight')?.value ?? 50);
-  return {
-    brandWeight: brandPct / 100,
-    minFollowers: minFollowersValue(),
-    minEngagement: Number($('minEngagement')?.value ?? 0),
-    decisionThreshold: Number($('decisionThreshold')?.value ?? 50) / 100,
-    treeDepth: Number($('treeDepth')?.value ?? 4),
-  };
-}
-
-function updateScenarioLabels(){
-  const v=scenarioValues();
-  const brandPct=Math.round(v.brandWeight*100);
-  if($('brandWeightLabel')) $('brandWeightLabel').textContent=`${brandPct}%`;
-  if($('campaignWeightLabel')) $('campaignWeightLabel').textContent=`${100-brandPct}%`;
-  if($('minFollowersLabel')) $('minFollowersLabel').textContent=v.minFollowers===0?'Any':fmtCompact(v.minFollowers);
-  if($('minEngagementLabel')) $('minEngagementLabel').textContent=`${v.minEngagement.toFixed(1)}%`;
-  if($('decisionThresholdLabel')) $('decisionThresholdLabel').textContent=`${Math.round(v.decisionThreshold*100)}%`;
-  if($('treeDepthLabel')) $('treeDepthLabel').textContent=`Depth ${v.treeDepth}`;
-  if($('fitMethod')) $('fitMethod').textContent=`${brandPct}% Brand + ${100-brandPct}% Campaign`;
-}
-
-function scheduleScenarioRun(){
-  updateScenarioLabels();
-  clearTimeout(scenarioTimer);
-  scenarioTimer=setTimeout(()=>runAnalysis(null),280);
-}
-
-function ensureScenarioSliders(){
-  if($('scenarioControls')) return;
-  const host = $('fitMethod')?.parentElement || $('runBtn')?.parentElement;
-  if(!host) return;
-
-  const wrap=document.createElement('div');
-  wrap.id='scenarioControls';
-  wrap.style.cssText='margin-top:10px;padding:12px;border:1px solid #2f3a50;border-radius:12px;background:#101827;display:grid;gap:11px';
-  wrap.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-      <b style="font-size:12px">Scenario Controls</b>
-      <span style="font-size:10px;color:#91a0ba">drag sliders to re-run analysis</span>
-    </div>
-
-    <div>
-      <div style="display:flex;justify-content:space-between;gap:12px;font-size:11px;margin-bottom:4px">
-        <span>Brand <b id="brandWeightLabel">50%</b></span>
-        <span>Campaign <b id="campaignWeightLabel">50%</b></span>
-      </div>
-      <input id="brandWeight" type="range" min="0" max="100" step="5" value="50" style="width:100%">
-    </div>
-
-    <div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-        <span>Minimum Followers</span><b id="minFollowersLabel">Any</b>
-      </div>
-      <input id="minFollowers" type="range" min="0" max="7" step="1" value="0" style="width:100%">
-    </div>
-
-    <div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-        <span>Minimum Engagement</span><b id="minEngagementLabel">0.0%</b>
-      </div>
-      <input id="minEngagement" type="range" min="0" max="10" step="0.5" value="0" style="width:100%">
-    </div>
-
-    <div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-        <span>Suitable Threshold</span><b id="decisionThresholdLabel">50%</b>
-      </div>
-      <input id="decisionThreshold" type="range" min="30" max="80" step="5" value="50" style="width:100%">
-    </div>
-
-    <div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-        <span>Decision Tree Complexity</span><b id="treeDepthLabel">Depth 4</b>
-      </div>
-      <input id="treeDepth" type="range" min="2" max="6" step="1" value="4" style="width:100%">
-    </div>`;
-
-  host.appendChild(wrap);
-  ['brandWeight','minFollowers','minEngagement','decisionThreshold','treeDepth'].forEach(id=>{
-    $(id).addEventListener('input', scheduleScenarioRun);
-  });
-  updateScenarioLabels();
-}
+const esc = s => String(s ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const pct = (v,d=1)=>`${(Number(v||0)*100).toFixed(d)}%`;
+const fmtNum=n=>new Intl.NumberFormat('en-US').format(Number(n||0));
+function compact(n){n=Number(n||0);if(n>=1e6)return `${(n/1e6).toFixed(n>=10e6?0:1)}M`;if(n>=1e3)return `${(n/1e3).toFixed(n>=100e3?0:1)}K`;return `${Math.round(n)}`}
+function initials(c){const s=(c?.name||c?.handle||'?').replace('@','').trim();return esc((s.match(/[A-Za-z0-9가-힣]/g)||['?']).slice(0,2).join('').toUpperCase())}
+function toast(msg,error=false){const t=$('toast');t.textContent=msg;t.className=`toast show${error?' error':''}`;clearTimeout(t._timer);t._timer=setTimeout(()=>t.className='toast',2600)}
+function fillSelect(id,items){$(id).innerHTML=items.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}
+function scenario(){return{brandWeight:Number($('brandWeight').value)/100,minFollowers:FOLLOWER_STEPS[Number($('minFollowers').value)],minEngagement:Number($('minEngagement').value),decisionThreshold:Number($('decisionThreshold').value)/100,treeDepth:Number($('treeDepth').value),useContentHistory:$('useContentHistory').checked,useCampaignHistory:$('useCampaignHistory').checked}}
+function updateLabels(){const s=scenario();const b=Math.round(s.brandWeight*100);$('brandWeightLabel').textContent=`${b} / ${100-b}`;$('minFollowersLabel').textContent=s.minFollowers?compact(s.minFollowers):'Any';$('minEngagementLabel').textContent=`${s.minEngagement.toFixed(1)}%`;$('decisionThresholdLabel').textContent=`${Math.round(s.decisionThreshold*100)}%`;$('treeDepthLabel').textContent=String(s.treeDepth)}
+function schedule(){updateLabels();clearTimeout(runTimer);runTimer=setTimeout(()=>runAnalysis(selectedHandle),320)}
 
 async function init(){
-  const r = await fetch('/api/options');
-  if(!r.ok) throw new Error('Could not load dashboard options.');
-  const o = await r.json();
-  fillSelect('brand', o.brands); fillSelect('country', o.countries); fillSelect('campaign', o.campaigns); fillSelect('platform', o.platforms);
-  $('brand').value='BVLGARI'; $('country').value='KR'; $('campaign').value='Luxury / Fashion'; $('platform').value='Instagram';
-  $('runBtn').addEventListener('click',()=>runAnalysis());
-  ensureScenarioSliders();
-  await runAnalysis();
-}
-function fillSelect(id, values){ $(id).innerHTML = values.map(v=>`<option>${escapeHtml(v)}</option>`).join(''); }
-
-async function runAnalysis(selectedHandle=null){
-  const btn=$('runBtn'); btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Analyzing…';
   try{
-    const sv=scenarioValues();
-    const p = new URLSearchParams({
-      brand:$('brand').value,
-      country:$('country').value,
-      campaign:$('campaign').value,
-      platform:$('platform').value,
-      brand_weight:String(sv.brandWeight),
-      min_followers:String(sv.minFollowers),
-      min_engagement:String(sv.minEngagement),
-      decision_threshold:String(sv.decisionThreshold),
-      tree_depth:String(sv.treeDepth)
-    });
-    if(selectedHandle) p.set('selected_handle',selectedHandle);
-    const r=await fetch('/api/analyze?'+p.toString());
-    if(!r.ok) throw new Error((await r.json()).detail || 'Analysis failed');
-    current=await r.json(); renderAll();
-  }catch(e){ showToast(e.message); }
-  finally{ btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-play"></i> Run analysis'; }
+    const r=await fetch('/api/options'); if(!r.ok) throw new Error(await r.text()); const o=await r.json();
+    fillSelect('brand',o.brands);fillSelect('country',o.countries);fillSelect('platform',o.platforms);fillSelect('campaign',o.campaigns);
+    $('brand').value='BVLGARI';$('country').value='KR';$('platform').value='Instagram';$('campaign').value='Luxury / Fashion';
+    ['brand','country','platform','campaign'].forEach(id=>$(id).addEventListener('change',()=>runAnalysis(null)));
+    $('runBtn').addEventListener('click',()=>runAnalysis(selectedHandle));
+    ['brandWeight','minFollowers','minEngagement','decisionThreshold','treeDepth'].forEach(id=>$(id).addEventListener('input',schedule));
+    ['useContentHistory','useCampaignHistory'].forEach(id=>$(id).addEventListener('change',schedule));
+    $('resetScenario').addEventListener('click',()=>{$('brandWeight').value=50;$('minFollowers').value=0;$('minEngagement').value=0;$('decisionThreshold').value=50;$('treeDepth').value=4;$('useContentHistory').checked=true;$('useCampaignHistory').checked=true;updateLabels();runAnalysis(null)});
+    updateLabels(); await runAnalysis(null);
+  }catch(e){toast(e.message||String(e),true)}
 }
 
-function renderAll(){
-  $('sampleSize').textContent = current.sample_size.toLocaleString();
-  $('trainingSize').textContent = current.training_size.toLocaleString();
-  $('datasetSize').textContent = current.dataset_size.toLocaleString();
-  $('repairedRows').textContent = current.repaired_rows.toLocaleString();
-  $('contextLabel').textContent = `${current.context.brand} · ${current.context.country} · ${current.context.platform} · ${current.context.campaign}`;
-  if($('fitMethod')) $('fitMethod').textContent = current.fit_method?.label || '50% Brand + 50% Campaign';
-  if(current.context){
-    if($('brandWeight')) $('brandWeight').value=String(Math.round(Number(current.context.brand_weight ?? 0.5)*100));
-    if($('minFollowers')){
-      const target=Number(current.context.min_followers ?? 0);
-      let idx=FOLLOWER_STEPS.indexOf(target);
-      if(idx<0) idx=0;
-      $('minFollowers').value=String(idx);
-    }
-    if($('minEngagement')) $('minEngagement').value=String(Number(current.context.min_engagement ?? 0));
-    if($('decisionThreshold')) $('decisionThreshold').value=String(Math.round(Number(current.context.decision_threshold ?? 0.5)*100));
-    if($('treeDepth')) $('treeDepth').value=String(Number(current.context.tree_depth ?? 4));
-    updateScenarioLabels();
-  }
-  renderTop3();
-  ensureDualRankingCards();
-  renderRanking();
-  renderLogisticExplanation();
-  renderDecisionPath();
-  renderSelected();
-  renderTree();
+async function runAnalysis(handle=null){
+  const s=scenario();document.body.classList.add('loading');
+  const q=new URLSearchParams({brand:$('brand').value,country:$('country').value,platform:$('platform').value,campaign:$('campaign').value,brand_weight:s.brandWeight,min_followers:s.minFollowers,min_engagement:s.minEngagement,decision_threshold:s.decisionThreshold,tree_depth:s.treeDepth,use_content_history:s.useContentHistory,use_campaign_history:s.useCampaignHistory});
+  if(handle) q.set('selected_handle',handle);
+  try{
+    const r=await fetch(`/api/analyze?${q.toString()}`);const body=await r.json();if(!r.ok)throw new Error(body.detail||'Analysis failed');
+    current=body;selectedHandle=body.selected.handle;renderAll();
+  }catch(e){toast(e.message||String(e),true)}finally{document.body.classList.remove('loading')}
 }
 
-function renderTop3(){
-  const sel=current.selected.handle;
-  $('top3').innerHTML=current.top10.slice(0,3).map(c=>`
-    <article class="creator-card ${c.handle===sel?'active':''}" data-handle="${escapeAttr(c.handle)}">
-      <div class="rank-pill">Top ${c.rank}</div>
-      <div class="creator-main">
-        <div class="avatar-wrap">
-          <img class="avatar-photo" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, \'${escapeAttr(c.handle)}\')">
-<span class="platform-dot">${platformIcon(c.platform)}</span>
-        </div>
-        <div class="creator-text">
-          <div class="handle">${escapeHtml(c.handle)}</div>
-          <div class="creator-name">${escapeHtml(safeName(c.name,c.handle))}</div>
-          <div class="niche">
-            <span class="pill-inline"><i class="fa-solid fa-flag"></i>${escapeHtml(c.country)}</span>
-            <span class="pill-inline"><i class="fa-solid fa-tag"></i>${escapeHtml(c.niche)}</span>
-            <span class="pill-inline">${platformIcon(c.platform)}${escapeHtml(c.platform)}</span>
-          </div>
-        </div>
-        <div class="prob"><small>Selection probability</small><strong>${(c.selection_probability*100).toFixed(1)}%</strong></div>
-      </div>
-      <div class="metrics">
-        <div class="metric"><strong>${fmtCompact(c.followers)}</strong><span>Followers</span></div>
-        <div class="metric"><strong>${c.engagement_rate.toFixed(1)}%${c.engagement_imputed?'*':''}</strong><span>Engagement${c.engagement_imputed?' (imputed)':''}</span></div>
-        <div class="metric"><strong>${c.verified?'Yes':'No'}${c.verified_imputed?'*':''}</strong><span>Verified${c.verified_imputed?' (imputed)':''}</span></div>
-      </div>
-    </article>`).join('');
-  document.querySelectorAll('.creator-card').forEach(el=>el.addEventListener('click',()=>runAnalysis(el.dataset.handle)));
-}
+function renderAll(){renderHeader();renderTop3();renderRanking('logistic');renderRanking('tree');renderModel();renderSummary();renderPath();renderTree()}
+function renderHeader(){const c=current.context;$('contextLabel').textContent=`${c.brand} · ${c.country} · ${c.platform} · ${c.campaign}`;$('featureCountBadge').textContent=current.feature_set.feature_count;$('modelBadge').textContent=current.feature_set.model_name;$('featureSetSub').textContent=`${current.feature_set.feature_count} active features · ${current.feature_set.target_label}`;$('targetLabel').textContent=current.feature_set.target_label}
+function topCard(c,i){const delta=Number(c.probability_delta||0);return `<article class="top-card ${c.handle===selectedHandle?'selected':''}" data-handle="${esc(c.handle)}"><div class="top-rank">#${i+1}</div><div class="top-main"><div class="avatar">${initials(c)}</div><div><div class="creator-handle">${esc(c.handle)}</div><div class="creator-name">${esc(c.name||'')}</div><div class="creator-tags"><span class="pill">${esc(c.country)}</span><span class="pill">${esc(c.niche)}</span><span class="pill">${esc(c.platform)}</span></div></div><div class="prob"><small>Enhanced probability</small><strong>${pct(c.selection_probability)}</strong><div class="delta ${delta>=0?'pos':'neg'}">${delta>=0?'▲':'▼'} ${Math.abs(delta*100).toFixed(1)} pp vs baseline</div></div></div><div class="top-metrics"><div class="metric"><b>${compact(c.followers)}</b><span>Followers</span></div><div class="metric"><b>${Number(c.engagement_rate).toFixed(1)}%</b><span>Engagement</span></div><div class="metric"><b>${pct(c.past_campaign_success_rate,0)}</b><span>Past success</span></div></div></article>`}
+function renderTop3(){const list=(current.top10_logistic||current.top10||[]).slice(0,3);$('top3').innerHTML=list.map(topCard).join('');document.querySelectorAll('.top-card').forEach(el=>el.addEventListener('click',()=>runAnalysis(el.dataset.handle)))}
+function rankRow(c,method){const tree=method==='tree',p=tree?Number(c.tree_probability):Number(c.selection_probability),rank=tree?c.tree_rank:c.rank;return `<div class="rank-row ${c.handle===selectedHandle?'active':''}" data-handle="${esc(c.handle)}"><div class="rank-num">${rank}</div><div class="rank-person"><div class="mini-avatar">${initials(c)}</div><div><b>${esc(c.handle)}</b><small>${esc(c.name||c.niche)} · ${esc(c.niche)}</small></div></div><div class="probbar"><i style="width:${Math.max(2,p*100)}%"></i></div><div class="rank-pct">${pct(p)}</div></div>`}
+function renderRanking(method){const list=method==='tree'?(current.top10_tree||[]):(current.top10_logistic||current.top10||[]);const id=method==='tree'?'rankingTree':'rankingLogistic';$(id).innerHTML=list.map(c=>rankRow(c,method)).join('');document.querySelectorAll(`#${id} .rank-row`).forEach(el=>el.addEventListener('click',()=>runAnalysis(el.dataset.handle)))}
 
-function findRankingCard(){
-  const list=$('ranking');
-  if(!list) return null;
-  let node=list.parentElement;
-  // Search only a few levels upward for the card that owns the ranking title.
-  for(let i=0;i<4 && node;i++,node=node.parentElement){
-    const heading=node.querySelector('h1,h2,h3,h4,.panel-title,.card-title');
-    if(heading && /Top\s*10|candidates by probability/i.test(heading.textContent||'')) return node;
-  }
-  return list.parentElement;
-}
+const featureIcons={brand_fit:'fa-gem',engagement_rate:'fa-chart-line',followers_log:'fa-users',luxury_post_ratio_sim:'fa-crown',jewelry_post_ratio_sim:'fa-ring',fashion_apparel_post_ratio_sim:'fa-shirt',past_campaign_count_sim:'fa-calendar-check',past_campaign_success_rate_sim:'fa-trophy'};
+const featureShort={brand_fit:'Brand & campaign fit',engagement_rate:'Audience response',followers_log:'Reach on log scale',luxury_post_ratio_sim:'Luxury content history',jewelry_post_ratio_sim:'Jewelry content history',fashion_apparel_post_ratio_sim:'Fashion / apparel history',past_campaign_count_sim:'Historical campaign volume',past_campaign_success_rate_sim:'Historical campaign success'};
+function renderModel(){const fs=current.feature_set.features||[];$('featureChips').innerHTML=fs.map(f=>`<div class="feature-chip"><b><i class="fa-solid ${featureIcons[f.key]||'fa-circle'}"></i>${esc(f.label)}</b><span>${esc(featureShort[f.key]||f.key)}</span></div>`).join('');const e=current.logistic_explanation;$('logitFormula').textContent=e.logit_formula;$('logitTotal').textContent=`z = ${Number(e.logit).toFixed(3)}`;$('logitProbability').textContent=pct(e.probability,2);$('contributions').innerHTML=e.features.map(f=>`<div class="contrib"><span>${esc(f.feature_label)} <small>β ${signed(f.coefficient)} × Z ${signed(f.standardized)}</small></span><b>${signed(f.contribution)}</b></div>`).join('');drawSigmoid(e.logit,e.probability)}
+function signed(v){const n=Number(v||0);return `${n>=0?'+':''}${n.toFixed(3)}`}
+function drawSigmoid(z,p){const svg=$('sigmoidSvg');const W=330,H=220,m={l:34,r:12,t:12,b:30},iw=W-m.l-m.r,ih=H-m.t-m.b;const sx=x=>m.l+(x+6)/12*iw,sy=y=>m.t+(1-y)*ih;let d='';for(let i=0;i<=120;i++){const x=-6+i*.1,y=1/(1+Math.exp(-x));d+=(i?'L':'M')+`${sx(x).toFixed(1)},${sy(y).toFixed(1)} `}const zz=Math.max(-6,Math.min(6,Number(z)));const pp=1/(1+Math.exp(-zz));svg.innerHTML=`<line x1="${m.l}" y1="${sy(.5)}" x2="${W-m.r}" y2="${sy(.5)}" stroke="#765a39" stroke-dasharray="4 4"/><line x1="${sx(zz)}" y1="${m.t}" x2="${sx(zz)}" y2="${H-m.b}" stroke="#8f6570" stroke-dasharray="3 4"/><path d="${d}" fill="none" stroke="#e8bd78" stroke-width="3"/><circle cx="${sx(zz)}" cy="${sy(pp)}" r="5" fill="#fff4df" stroke="#d9905a" stroke-width="3"/>${[-4,-2,0,2,4].map(x=>`<text x="${sx(x)}" y="${H-9}" text-anchor="middle" fill="#738198" font-size="9">${x}</text>`).join('')}${[0,.5,1].map(y=>`<text x="${m.l-7}" y="${sy(y)+3}" text-anchor="end" fill="#738198" font-size="9">${y}</text>`).join('')}<text x="${Math.min(W-52,sx(zz)+7)}" y="${Math.max(16,sy(pp)-10)}" fill="#f2c67f" font-size="10" font-weight="700">${pct(pp)}</text>`;$('sigmoidCaption').textContent=`Sigmoid(${Number(z).toFixed(3)}) = ${pct(p,2)}`}
+function renderSummary(){$('datasetSize').textContent=fmtNum(current.dataset_size);$('trainingSize').textContent=fmtNum(current.training_size);$('sampleSize').textContent=fmtNum(current.sample_size);$('repairedRows').textContent=fmtNum(current.repaired_rows);$('activeFeatureCount').textContent=current.feature_set.feature_count;$('targetPositiveRate').textContent=pct(current.target_positive_rate);$('targetColumn').textContent=current.target_column}
+function renderPath(){const s=current.selected;$('selectedMini').innerHTML=`<div class="avatar">${initials(s)}</div><div><b>${esc(s.handle)}</b><small>${esc(s.name)} · ${esc(s.niche)} · ${esc(s.platform)}</small></div><div class="mini-prob"><strong>${pct(s.selection_probability)}</strong><small>Logistic probability</small></div>`;const steps=s.decision_path||[];$('decisionPath').innerHTML=steps.map((x,i)=>`<div class="path-step"><div class="path-node"><b>${esc(x.feature_label)}</b>${esc(x.operator)} ${esc(x.threshold_label)}<br><small>actual ${esc(x.actual_label)}</small></div>${i<steps.length-1?'<i class="fa-solid fa-arrow-right path-arrow"></i>':''}</div>`).join('');const suitable=Number(s.tree_prediction)===1;$('pathResult').innerHTML=`<b>${suitable?'Suitable':'Not Suitable'}</b> · Tree P(positive) ${pct(s.tree_positive_probability)} · threshold ${pct(current.context.decision_threshold,0)}`}
 
-function ensureDualRankingCards(){
-  const logisticList=$('ranking');
-  if(!logisticList) return;
+function treeLayout(root){const nodes=[],edges=[];let leaf=0;function walk(n,depth){if(n.is_leaf){n._x=leaf++;n._depth=depth;nodes.push(n);return n._x}const lx=walk(n.left,depth+1),rx=walk(n.right,depth+1);n._x=(lx+rx)/2;n._depth=depth;nodes.push(n);edges.push([n,n.left],[n,n.right]);return n._x}walk(root,0);const maxD=Math.max(...nodes.map(n=>n._depth),1),maxX=Math.max(leaf-1,1);return{nodes,edges,maxD,maxX}}
+function renderTree(){const svg=$('treeSvg'),root=current.tree;if(!root){svg.innerHTML='';return}const L=treeLayout(root),W=1250,H=Math.max(420,(L.maxD+1)*105),mx=70,my=52,x=n=>mx+(n._x/L.maxX)*(W-2*mx),y=n=>my+(n._depth/L.maxD)*(H-2*my),pathIds=new Set((current.selected.path_node_ids||[]).map(Number));svg.setAttribute('viewBox',`0 0 ${W} ${H}`);let html='';for(const [a,b] of L.edges){const sel=pathIds.has(a.id)&&pathIds.has(b.id);html+=`<line x1="${x(a)}" y1="${y(a)+24}" x2="${x(b)}" y2="${y(b)-24}" stroke="${sel?'#d9a25e':'#40516d'}" stroke-width="${sel?4:2}" opacity="${sel?1:.72}"/>`}for(const n of L.nodes){const sel=pathIds.has(n.id),w=n.is_leaf?118:154,h=50,xx=x(n)-w/2,yy=y(n)-h/2;const line1=n.is_leaf?n.label:n.feature_label,line2=n.is_leaf?`P=${Math.round(n.positive_probability*100)}% · n=${n.samples}`:`≤ ${n.threshold_label}? · n=${n.samples}`;html+=`<g><rect x="${xx}" y="${yy}" width="${w}" height="${h}" rx="10" fill="${sel?'#2b1c1d':'#101928'}" stroke="${sel?'#dda65f':'#4b5d79'}" stroke-width="${sel?3:1.5}"/><text x="${x(n)}" y="${y(n)-3}" text-anchor="middle" fill="#f2f5fa" font-size="11" font-weight="700">${esc(line1)}</text><text x="${x(n)}" y="${y(n)+13}" text-anchor="middle" fill="${sel?'#f2c981':'#9aa8bd'}" font-size="9">${esc(line2)}</text></g>`}svg.innerHTML=html}
 
-  const logisticCard=findRankingCard();
-  if(logisticCard){
-    const heading=logisticCard.querySelector('h1,h2,h3,h4,.panel-title,.card-title');
-    if(heading) heading.textContent='Top 10 candidates by probability (Logistic Regression)';
-    const helper=[...logisticCard.querySelectorAll('p,small,.subtitle,.subtext')].find(
-      el => /candidate|probability|formula|Decision Tree/i.test(el.textContent||'')
-    );
-    if(helper) helper.textContent='Ranked by Logistic Regression selection probability. Click a creator to inspect the same creator across both models.';
-  }
-
-  if($('treeRankingCard')) return;
-
-  if(!$('dualRankingStyles')){
-    const style=document.createElement('style');
-    style.id='dualRankingStyles';
-    style.textContent=`
-      #treeRankingCard{
-        margin-top:14px;
-        padding:14px;
-        border:1px solid #2d3a50;
-        border-radius:15px;
-        background:linear-gradient(180deg,#111a2a 0%,#0d1624 100%);
-        box-sizing:border-box;
-      }
-      #treeRankingCard .dual-rank-title{
-        margin:0 0 4px;
-        color:#f3f6fb;
-        font-size:14px;
-        font-weight:800;
-      }
-      #treeRankingCard .dual-rank-sub{
-        margin:0 0 12px;
-        color:#91a0ba;
-        font-size:10px;
-        line-height:1.35;
-      }
-      #rankingTree{
-        display:grid;
-        gap:6px;
-      }
-      #treeRankingCard .rank-row{
-        width:100%;
-      }
-      #treeRankingCard .tree-prob-note{
-        color:#f1c678;
-        font-size:9px;
-        white-space:nowrap;
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  const card=document.createElement('section');
-  card.id='treeRankingCard';
-  card.innerHTML=`
-    <div class="dual-rank-title"><i class="fa-solid fa-code-branch"></i> Top 10 candidates by probability (Decision Tree)</div>
-    <div class="dual-rank-sub">Ranked by the positive-class probability of the Decision Tree leaf. Ties are broken by Brand Fit, Engagement, then Followers.</div>
-    <div id="rankingTree"></div>
-  `;
-
-  // Keep the second ranking visually paired with the current ranking card.
-  // If we can identify the original card, place it immediately after it.
-  const anchor=logisticCard || logisticList.parentElement;
-  if(anchor && anchor.parentElement){
-    anchor.insertAdjacentElement('afterend',card);
-  }else{
-    logisticList.insertAdjacentElement('afterend',card);
-  }
-}
-
-function rankingRowHtml(c, i, method){
-  const selectedHandle=current.selected.handle;
-  const isTree=method==='tree';
-  const probability=isTree ? Number(c.tree_probability||0) : Number(c.selection_probability||0);
-  const rank=isTree ? Number(c.tree_rank||i+1) : Number(c.rank||i+1);
-  const methodText=isTree ? 'Decision Tree' : 'Logistic Regression';
-
-  return `
-    <button type="button" class="rank-row ${c.handle===selectedHandle?'active':''}" data-handle="${escapeAttr(c.handle)}" aria-label="Inspect ${escapeAttr(c.handle)}">
-      <div class="rank-num">${rank}</div>
-      <div class="rank-info">
-        <img class="rank-avatar" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, \'${escapeAttr(c.handle)}\')">
-        <div>
-          <div class="rank-handle">${escapeHtml(c.handle)}</div>
-          <div class="rank-sub">${escapeHtml(safeName(c.name,c.handle))} · ${escapeHtml(c.niche)} · ${escapeHtml(c.platform)}</div>
-        </div>
-      </div>
-      <div class="bar-bg"><div class="bar" style="width:${Math.max(2,probability*100)}%"></div></div>
-      <div class="rank-pct">${(probability*100).toFixed(1)}%</div>
-    </button>`;
-}
-
-function bindRankingClicks(containerSelector){
-  document.querySelectorAll(`${containerSelector} .rank-row`).forEach(el=>{
-    el.addEventListener('click', async ()=>{
-      const handle=el.dataset.handle;
-      if(!handle || handle===current.selected.handle) return;
-      await runAnalysis(handle);
-    });
-  });
-}
-
-function renderRanking(){
-  const logistic=current.top10_logistic || current.top10 || [];
-  const tree=current.top10_tree || [];
-
-  $('ranking').innerHTML=logistic.map((c,i)=>rankingRowHtml(c,i,'logistic')).join('');
-
-  const treeContainer=$('rankingTree');
-  if(treeContainer){
-    treeContainer.innerHTML=tree.map((c,i)=>rankingRowHtml(c,i,'tree')).join('');
-  }
-
-  bindRankingClicks('#ranking');
-  bindRankingClicks('#rankingTree');
-}
-
-function renderLogisticExplanation(){
-  const e=current.logistic_explanation;
-  const s=current.selected;
-  $('formulaSelected').textContent=`#${s.rank} ${s.handle}`;
-
-  $('featureValues').innerHTML=e.features.map(f=>`
-    <div class="mini-row">
-      <span>${escapeHtml(f.feature_label)}<div class="subvalue">Z = ${Number(f.standardized).toFixed(3)}</div></span>
-      <strong>${escapeHtml(f.raw_label)}</strong>
-    </div>`).join('');
-
-  $('contributions').innerHTML=`
-    <div class="mini-row"><span>Intercept β₀</span><strong>${fmtSigned(e.intercept)}</strong></div>
-    ${e.features.map(f=>`
-      <div class="mini-row">
-        <span>${escapeHtml(f.feature_label)}<div class="subvalue">β ${fmtSigned(f.coefficient)} × Z ${Number(f.standardized).toFixed(3)}</div></span>
-        <strong>${fmtSigned(f.contribution)}</strong>
-      </div>`).join('')}
-    <div class="mini-row total"><span>Total z</span><strong>${Number(e.logit).toFixed(3)}</strong></div>
-    <div class="mini-row total"><span>Probability</span><strong>${(e.probability*100).toFixed(2)}%</strong></div>`;
-
-  renderSigmoid(e.logit,e.probability,Number(current.context?.decision_threshold ?? 0.5));
-}
-
-function renderSigmoid(logit, probability, decisionThreshold=0.5){
-  const svg=$('sigmoidSvg');
-  svg.innerHTML='';
-  const NS='http://www.w3.org/2000/svg';
-  const W=300,H=205,L=36,R=12,T=20,B=32;
-  const xmin=-6,xmax=6,ymin=0,ymax=1;
-  const X=x=>L+(x-xmin)/(xmax-xmin)*(W-L-R);
-  const Y=y=>T+(ymax-y)/(ymax-ymin)*(H-T-B);
-
-  const line=(x1,y1,x2,y2,stroke='#2d3850',width=1,dash='')=>{
-    const el=document.createElementNS(NS,'line'); el.setAttribute('x1',x1);el.setAttribute('y1',y1);el.setAttribute('x2',x2);el.setAttribute('y2',y2);el.setAttribute('stroke',stroke);el.setAttribute('stroke-width',width); if(dash)el.setAttribute('stroke-dasharray',dash);svg.appendChild(el); return el;
-  };
-  const text=(x,y,value,size=9,fill='#91a0ba',anchor='middle',weight='400')=>{
-    const el=document.createElementNS(NS,'text');el.setAttribute('x',x);el.setAttribute('y',y);el.setAttribute('font-size',size);el.setAttribute('fill',fill);el.setAttribute('text-anchor',anchor);el.setAttribute('font-weight',weight);el.textContent=value;svg.appendChild(el);return el;
-  };
-
-  [0,.25,.5,.75,1].forEach(v=>{line(L,Y(v),W-R,Y(v),'#253045');text(L-6,Y(v)+3,v.toFixed(v===0||v===1?0:2),8,'#8a97ae','end');});
-  [-6,-4,-2,0,2,4,6].forEach(v=>{line(X(v),T,X(v),H-B,'#1d2637');text(X(v),H-17,String(v),8);});
-  line(L,T,L,H-B,'#54617a',1.1); line(L,H-B,W-R,H-B,'#54617a',1.1);
-  line(L,Y(decisionThreshold),W-R,Y(decisionThreshold),'#d0a15f',1,'5 4');
-  text(W-R-2,Y(decisionThreshold)-5,`threshold ${Math.round(decisionThreshold*100)}%`,8,'#d0a15f','end','600');
-
-  let d='';
-  for(let i=0;i<=120;i++){
-    const x=xmin+(xmax-xmin)*i/120;
-    const p=1/(1+Math.exp(-x));
-    d+=(i===0?'M':'L')+`${X(x).toFixed(2)} ${Y(p).toFixed(2)} `;
-  }
-  const path=document.createElementNS(NS,'path');path.setAttribute('d',d);path.setAttribute('fill','none');path.setAttribute('stroke','#d0a15f');path.setAttribute('stroke-width','3');svg.appendChild(path);
-
-  const px=Math.max(xmin,Math.min(xmax,logit));
-  line(X(px),Y(probability),X(px),H-B,'#c86f7a',1,'4 3');
-  line(L,Y(probability),X(px),Y(probability),'#7d5cff',1,'3 3');
-  const dot=document.createElementNS(NS,'circle');dot.setAttribute('cx',X(px));dot.setAttribute('cy',Y(probability));dot.setAttribute('r','5');dot.setAttribute('fill','#ec5d73');dot.setAttribute('stroke','#fff');dot.setAttribute('stroke-width','2');svg.appendChild(dot);
-  text(X(px),Math.max(12,Y(probability)-11),`z=${Number(logit).toFixed(3)}`,9,'#f1d2a2','middle','700');
-  text(W-12,13,`${(probability*100).toFixed(2)}%`,12,'#f1d2a2','end','800');
-  text((L+W-R)/2,H-4,'Logit z',9,'#91a0ba');
-  const ylabel=text(10,(T+H-B)/2,'P(Y=1)',9,'#91a0ba'); ylabel.setAttribute('transform',`rotate(-90 10 ${(T+H-B)/2})`);
-  $('sigmoidCaption').textContent=`Sigmoid(${Number(logit).toFixed(3)}) = ${(probability*100).toFixed(2)}%`;
-}
-
-function renderDecisionPath(){
-  const s=current.selected;
-  $('decisionPath').innerHTML=s.decision_path.map((p,i)=>`
-    <div class="path-step"><span class="path-num">${i+1}</span><div><b>${escapeHtml(p.feature_label)}</b> ${p.operator} ${escapeHtml(p.threshold_label)}<br><span style="color:#a3afc4">Actual: ${escapeHtml(p.actual_label)}</span></div></div>`).join('')+
-    `<div class="result">→ ${escapeHtml(leafLabelForSelected())} · Tree P(positive) ${(Number(s.tree_positive_probability||0)*100).toFixed(1)}% · threshold ${Math.round(Number(current.context?.decision_threshold ?? 0.5)*100)}%</div>`;
-}
-function leafLabelForSelected(){
-  const leaf=findNode(current.tree,current.selected.leaf_id);
-  return leaf?.label || 'Result';
-}
-
-function renderSelected(){
-  const s=current.selected;
-  $('selectedInfo').innerHTML=`
-    <div class="selected-head">
-      <img class="selected-avatar" src="${avatarUrl(s.handle,s.platform)}" alt="${escapeAttr(s.handle)} profile" onerror="avatarFallback(this, \'${escapeAttr(s.handle)}\')">
-      <div>
-        <div class="selected-name">${escapeHtml(s.handle)} ${s.verified?'<span class="verified-chip"><i class="fa-solid fa-badge-check"></i> Verified</span>':''}</div>
-        <div class="selected-display-name">${escapeHtml(safeName(s.name,s.handle))}</div>
-        <div class="selected-meta">${escapeHtml(s.country)} · ${escapeHtml(s.platform)} · ${escapeHtml(s.niche)}</div>
-      </div>
-    </div>
-    <div class="selected-grid">
-      <div><b>${(s.selection_probability*100).toFixed(1)}%</b>Logistic probability</div>
-      <div><b>${s.brand_fit.toFixed(2)}</b>Brand fit</div>
-      <div><b>${s.engagement_rate.toFixed(1)}%${s.engagement_imputed?'*':''}</b>Engagement${s.engagement_imputed?' (imputed)':''}</div>
-      <div><b>${fmtCompact(s.followers)}</b>Followers</div>
-      <div><b>${(Number(s.tree_positive_probability||0)*100).toFixed(1)}%</b>Tree positive probability</div>
-    </div>`;
-  const bw=Math.round(Number(current.fit_method?.brand_weight ?? 0.5)*100);
-  const cw=100-bw;
-  const dt=Number(current.context?.decision_threshold ?? 0.5);
-  const disagreement = (s.selection_probability>=dt) !== (Number(s.tree_prediction)===1);
-  const followerText=Number(current.context?.min_followers||0)>0 ? fmtCompact(Number(current.context.min_followers)) : 'Any';
-  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b>. Logistic Regression supplies the ranking probability; the Decision Tree is a separate rule-based approximation and can disagree${disagreement?' <b>(disagreement case)</b>':''}. Current scenario: <b>${bw}% Brand + ${cw}% Campaign</b>, minimum followers <b>${followerText}</b>, minimum engagement <b>${Number(current.context?.min_engagement||0).toFixed(1)}%</b>, suitable threshold <b>${Math.round(dt*100)}%</b>, tree depth <b>${Number(current.context?.tree_depth||4)}</b>.`;
-}
-
-function findNode(n,id){ if(n.id===id) return n; if(n.is_leaf) return null; return findNode(n.left,id)||findNode(n.right,id); }
-
-function layoutTree(root){
-  const nodes=[], edges=[];
-  let leafCursor=54;
-  const leafGap=106;
-  const yStart=38;
-  const yGap=78;
-  let maxDepth=0;
-
-  function visit(n,depth,parent=null,branch=''){
-    maxDepth=Math.max(maxDepth,depth);
-    let x;
-    if(n.is_leaf){ x=leafCursor; leafCursor+=leafGap; }
-    else{
-      const lx=visit(n.left,depth+1,n,'≤');
-      const rx=visit(n.right,depth+1,n,'>');
-      x=(lx+rx)/2;
-    }
-    const y=yStart+depth*yGap;
-    nodes.push({...n,x,y});
-    if(parent) edges.push({from:parent.id,to:n.id,branch});
-    return x;
-  }
-  visit(root,0);
-  const width=Math.max(720,leafCursor+18);
-  const height=Math.max(245,yStart+maxDepth*yGap+45);
-  return {nodes,edges,width,height};
-}
-
-function renderTree(){
-  const svg=$('treeSvg'); svg.innerHTML='';
-  const NS='http://www.w3.org/2000/svg';
-  const layout=layoutTree(current.tree); const {nodes,edges}=layout;
-  svg.setAttribute('viewBox',`0 0 ${layout.width} ${layout.height}`);
-  svg.removeAttribute('width'); svg.removeAttribute('height');
-  svg.style.width='100%'; svg.style.height='auto';
-  svg.style.aspectRatio=`${layout.width} / ${layout.height}`;
-
-  const byId=new Map(nodes.map(n=>[n.id,n]));
-  const pathSet=new Set(current.selected.path_node_ids);
-  const nodeHalfW=50,nodeHalfH=20;
-
-  edges.forEach(e=>{
-    const a=byId.get(e.from), b=byId.get(e.to);
-    const selected=pathSet.has(a.id)&&pathSet.has(b.id);
-    const line=document.createElementNS(NS,'line');
-    line.setAttribute('x1',a.x); line.setAttribute('y1',a.y+nodeHalfH); line.setAttribute('x2',b.x); line.setAttribute('y2',b.y-nodeHalfH);
-    line.setAttribute('stroke',selected?'#d0a15f':'#536078'); line.setAttribute('stroke-width',selected?'2.8':'1.4'); svg.appendChild(line);
-    const label=document.createElementNS(NS,'text');
-    label.setAttribute('x',(a.x+b.x)/2); label.setAttribute('y',(a.y+b.y)/2-4); label.setAttribute('text-anchor','middle');
-    label.setAttribute('font-size','9'); label.setAttribute('font-weight',selected?'700':'500'); label.setAttribute('fill',selected?'#f1d2a2':'#9da8bc'); label.textContent=e.branch; svg.appendChild(label);
-  });
-
-  nodes.forEach(n=>{
-    const selected=pathSet.has(n.id); const g=document.createElementNS(NS,'g');
-    const rect=document.createElementNS(NS,'rect');
-    rect.setAttribute('x',n.x-nodeHalfW); rect.setAttribute('y',n.y-nodeHalfH); rect.setAttribute('width',nodeHalfW*2); rect.setAttribute('height',nodeHalfH*2); rect.setAttribute('rx','8');
-    rect.setAttribute('fill',selected?'#2b1f20':'#111a2a'); rect.setAttribute('stroke',selected?'#d0a15f':'#556178'); rect.setAttribute('stroke-width',selected?'2.2':'1.05'); g.appendChild(rect);
-    const t=document.createElementNS(NS,'text');
-    t.setAttribute('x',n.x); t.setAttribute('y',n.y-6); t.setAttribute('text-anchor','middle'); t.setAttribute('font-size','8.3');
-    t.setAttribute('font-weight',selected?'700':'600'); t.setAttribute('fill',selected?'#fff0d1':'#dfe6f5');
-    const lines=n.is_leaf?[n.label,`P=${Math.round(n.positive_probability*100)}% · n=${n.samples}`]:[n.feature_label,`≤ ${n.threshold_label}? · n=${n.samples}`];
-    lines.forEach((txt,i)=>{ const sp=document.createElementNS(NS,'tspan'); sp.setAttribute('x',n.x); sp.setAttribute('dy',i===0?'0':'12'); sp.textContent=txt; t.appendChild(sp); });
-    g.appendChild(t); svg.appendChild(g);
-  });
-}
-
-function escapeHtml(s){ return String(s??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch])); }
-function escapeAttr(s){ return escapeHtml(s); }
-
-init().catch(e=>showToast(e.message));
+document.addEventListener('DOMContentLoaded',init);

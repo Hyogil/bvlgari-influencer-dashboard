@@ -1,70 +1,32 @@
-# BVLGARI Influencer Selection Dashboard — Formula + Compact Tree
+# BVLGARI Influencer Dashboard — Enhanced 8-Feature Model
 
-This version uses the merged 5,300-creator dataset and supports:
+This project upgrades the original 4-feature pilot to a curated 8-feature model and a simulated campaign-success target for architecture prototyping.
 
-- Country filter: **KR / Global / All**
-- Platform filter: Instagram / TikTok / YouTube / All
-- Logistic Regression ranking (Top 3 and clickable Top 10)
-- Exact Logistic Regression arithmetic for the selected creator
-  - raw feature values
-  - z-scores from `StandardScaler`
-  - fitted beta coefficients
-  - per-feature contribution to the logit
-  - total logit `z`
-  - sigmoid probability
-  - interactive sigmoid point for the selected creator
-- Full Decision Tree with only the selected creator's path highlighted
-- More compact Decision Tree layout with no desktop internal scroll bar
+## Curated 8 features
+1. `brand_fit`
+2. `engagement_rate`
+3. `followers_log`
+4. `luxury_post_ratio_sim`
+5. `jewelry_post_ratio_sim`
+6. `fashion_apparel_post_ratio_sim`
+7. `past_campaign_count_sim`
+8. `past_campaign_success_rate_sim`
 
-## Windows
+Target: `simulated_campaign_success_target`
 
-1. Extract the ZIP, for example to `C:\BVLGARI`.
-2. Double-click `run_windows.bat`, or run:
+> Important: all `*_sim` fields and the target are simulated and are not observed BVLGARI campaign outcomes.
 
-```bat
-cd /d C:\BVLGARI
-run_windows.bat
+## UI changes
+- BVLGARI-inspired dark/gold dashboard
+- Top 3 enhanced-model recommendations with baseline probability delta
+- Two independent Top-10 cards: Logistic Regression and Decision Tree
+- Scenario controls for Brand/Campaign balance, minimum followers, minimum engagement, Tree threshold/depth
+- Toggles for content-history and campaign-history feature groups
+- Dynamic feature chips, Logistic feature contributions, sigmoid curve, selected Decision Tree path, and full tree
+
+## Run locally
+```bash
+pip install -r requirements.txt
+python run.py
 ```
-
-3. Open `http://127.0.0.1:8000` if the browser does not open automatically.
-
-`run_windows.bat` is ASCII/CRLF with no UTF-8 BOM to avoid the Korean Windows CMD encoding problem seen in earlier versions.
-
-## Logistic Regression equation shown in the UI
-
-The fitted pipeline is:
-
-`StandardScaler -> LogisticRegression`
-
-For each feature:
-
-`Zj = (Xj - mean_j) / scale_j`
-
-Then:
-
-`z = beta0 + beta1*Z1 + beta2*Z2 + beta3*Z3 + beta4*Z4`
-
-and:
-
-`P(Y=1) = 1 / (1 + exp(-z))`
-
-The numbers shown in the formula panel come directly from the fitted scikit-learn model and are cross-checked against `predict_proba()`.
-
-## Academic limitation
-
-The public creator dataset does not contain a historical campaign outcome. The project therefore creates a transparent proxy binary target. The displayed probabilities should be described as **model-estimated campaign suitability under the proxy-target definition**, not as actual historical BVLGARI campaign success probabilities.
-
-
-## Local Resource folder
-
-This build uses `Resource/` for creator avatars and local icon resources.
-
-- `Resource/images/instagram/` — Instagram JPG avatars, filename = handle without `@`
-- `Resource/images/tiktok/` — TikTok JPG avatars
-- `Resource/images/youtube/` — YouTube JPG avatars
-- `Resource/images/sample/` — local fallback avatars, only when a creator image is missing
-- `Resource/fontawesome/css/fa-local.css` — local FA-class-compatible icon stylesheet
-
-Example: `@jin` -> `Resource/images/instagram/jin.jpg`.
-
-External `i.pravatar.cc`, Font Awesome CDN, and Google Fonts dependencies were removed.
+Then open `http://127.0.0.1:8000`.
