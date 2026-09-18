@@ -57,8 +57,6 @@ function fillSelect(id, values){ $(id).innerHTML = values.map(v=>`<option>${esca
 function getControlValues(){
   return {
     brand_weight: Number($('brandWeight').value)/100,
-    profile_weight: Number($('profileWeight').value)/100,
-    content_weight: Number($('contentWeight').value)/100,
     min_followers: Number($('minFollowers').value),
     min_engagement: Number($('minEngagement').value),
     suitable_threshold: Number($('suitableThreshold').value)/100,
@@ -66,27 +64,11 @@ function getControlValues(){
   };
 }
 
-function normalizeScenarioWeights(changed){
-  let p=Number($('profileWeight').value);
-  let c=Number($('contentWeight').value);
-  if(p+c>100){
-    if(changed==='profile') c=100-p;
-    else p=100-c;
-    $('profileWeight').value=String(Math.max(0,p));
-    $('contentWeight').value=String(Math.max(0,c));
-  }
-}
 
 function updateControlLabels(){
   const brand=Number($('brandWeight').value);
-  const profile=Number($('profileWeight').value);
-  const content=Number($('contentWeight').value);
-  const history=Math.max(0,100-profile-content);
   $('brandWeightLabel').textContent=`${brand}%`;
   $('campaignWeightLabel').textContent=`${100-brand}%`;
-  $('profileWeightLabel').textContent=`${profile}%`;
-  $('contentWeightLabel').textContent=`${content}%`;
-  $('historyWeightLabel').textContent=`${history}%`;
   $('minFollowersLabel').textContent=fmtCompact(Number($('minFollowers').value));
   $('minEngagementLabel').textContent=`${Number($('minEngagement').value).toFixed(1)}%`;
   $('suitableThresholdLabel').textContent=`${Number($('suitableThreshold').value)}%`;
@@ -98,10 +80,6 @@ function bindControls(){
     $(id).addEventListener('input',updateControlLabels);
     $(id).addEventListener('change',()=>runAnalysis(null));
   });
-  $('profileWeight').addEventListener('input',()=>{ normalizeScenarioWeights('profile'); updateControlLabels(); });
-  $('contentWeight').addEventListener('input',()=>{ normalizeScenarioWeights('content'); updateControlLabels(); });
-  $('profileWeight').addEventListener('change',()=>runAnalysis(null));
-  $('contentWeight').addEventListener('change',()=>runAnalysis(null));
 }
 
 async function init(){
@@ -119,8 +97,6 @@ async function init(){
 
   const d=o.defaults || {};
   $('brandWeight').value=String(Math.round(Number(d.brand_weight ?? .5)*100));
-  $('profileWeight').value=String(Math.round(Number(d.profile_weight ?? .4)*100));
-  $('contentWeight').value=String(Math.round(Number(d.content_weight ?? .35)*100));
   $('minFollowers').value=String(Number(d.min_followers ?? 0));
   $('minEngagement').value=String(Number(d.min_engagement ?? 0));
   $('suitableThreshold').value=String(Math.round(Number(d.suitable_threshold ?? .5)*100));
@@ -144,8 +120,6 @@ async function runAnalysis(selectedHandle=null){
       campaign:$('campaign').value,
       platform:$('platform').value,
       brand_weight:String(c.brand_weight),
-      profile_weight:String(c.profile_weight),
-      content_weight:String(c.content_weight),
       min_followers:String(c.min_followers),
       min_engagement:String(c.min_engagement),
       suitable_threshold:String(c.suitable_threshold),
@@ -171,7 +145,6 @@ function renderAll(){
   $('repairedRows').textContent = current.repaired_rows.toLocaleString();
   $('contextLabel').textContent = `${current.context.brand} · ${current.context.country} · ${current.context.platform} · ${current.context.campaign}`;
   $('fitMethod').textContent = `${Math.round(current.context.brand_weight*100)}% Brand + ${Math.round(current.context.campaign_weight*100)}% Campaign`;
-  $('scenarioMethod').textContent = `${Math.round(current.context.profile_weight*100)}% Profile + ${Math.round(current.context.content_weight*100)}% Content + ${Math.round(current.context.history_weight*100)}% History`;
   renderTop3();
   renderRanking();
   renderLogisticExplanation();
@@ -199,7 +172,7 @@ function renderTop3(){
             <span class="pill-inline">${platformIcon(c.platform)}${escapeHtml(c.platform)}</span>
           </div>
         </div>
-        <div class="prob"><small>Final Ranking Score</small><strong>${(c.final_score*100).toFixed(1)}%</strong><em>Model ${(c.selection_probability*100).toFixed(1)} · Scenario ${(c.scenario_score*100).toFixed(1)}</em></div>
+        <div class="prob"><small>Predicted Success Probability</small><strong>${(c.selection_probability*100).toFixed(1)}%</strong><em>Logistic Regression</em></div>
       </div>
       <div class="metrics">
         <div class="metric"><strong>${fmtCompact(c.followers)}</strong><span>Followers</span></div>
@@ -219,11 +192,11 @@ function renderRanking(){
         <img class="rank-avatar" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, '${escapeAttr(c.handle)}')">
         <div>
           <div class="rank-handle">${escapeHtml(c.handle)}</div>
-          <div class="rank-sub">${escapeHtml(safeName(c.name,c.handle))} · ${escapeHtml(c.niche)} · ${escapeHtml(c.platform)} <span class="scenario-inline">· Model ${(c.selection_probability*100).toFixed(1)} · Scenario ${(c.scenario_score*100).toFixed(1)}</span></div>
+          <div class="rank-sub">${escapeHtml(safeName(c.name,c.handle))} · ${escapeHtml(c.niche)} · ${escapeHtml(c.platform)} <span class="model-inline">· Logistic ${(c.selection_probability*100).toFixed(1)}%</span></div>
         </div>
       </div>
-      <div class="bar-bg"><div class="bar" style="width:${Math.max(2,c.final_score*100)}%"></div></div>
-      <div class="rank-pct">${(c.final_score*100).toFixed(1)}%</div>
+      <div class="bar-bg"><div class="bar" style="width:${Math.max(2,c.selection_probability*100)}%"></div></div>
+      <div class="rank-pct">${(c.selection_probability*100).toFixed(1)}%</div>
     </button>`).join('');
 
   document.querySelectorAll('.rank-row').forEach(el=>{
@@ -316,9 +289,7 @@ function renderSelected(){
       </div>
     </div>
     <div class="selected-grid five">
-      <div><b>${(s.final_score*100).toFixed(1)}%</b>Final Ranking Score</div>
-      <div><b>${(s.selection_probability*100).toFixed(1)}%</b>Model probability</div>
-      <div><b>${(s.scenario_score*100).toFixed(1)}</b>Scenario Fit /100</div>
+      <div><b>${(s.selection_probability*100).toFixed(1)}%</b>Predicted Success Probability</div>
       <div><b>${s.profile_fit.toFixed(3)}</b>Profile Fit</div>
       <div><b>${s.content_fit.toFixed(3)}</b>Content Fit</div>
       <div><b>${s.campaign_history_score.toFixed(3)}</b>History Score</div>
@@ -326,7 +297,7 @@ function renderSelected(){
       <div><b>${fmtCompact(s.followers)}</b>Followers</div>
       <div><b>${(s.tree_probability*100).toFixed(1)}%</b>Tree leaf probability</div>
     </div>`;
-  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b> is based on <b>Final Ranking Score = 50% Model Probability + 50% Scenario Fit</b>. The statistical model uses 5 features: Profile Fit, Content Fit, Campaign History Score, Engagement Rate, and log Followers. Moving Profile / Content changes Scenario Fit (History is the automatic remainder), so the ranking can re-order. Minimum Followers and Engagement filter candidates. Suitable Threshold changes the Tree label and Tree Depth changes Tree complexity; those two controls do not directly change Final Ranking Score. <b>Important:</b> content/history fields and the target are simulated prototype data.`;
+  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b> is determined solely by the <b>Logistic Regression predicted probability</b>. The model uses 5 features: Profile Fit, Content Fit, Campaign History Score, Engagement Rate, and log Followers. Brand ↔ Campaign changes the engineered Profile Fit and retrains the model as a sensitivity analysis. Minimum Followers and Engagement filter candidates. Suitable Threshold changes the Tree label and Tree Depth changes Tree complexity; those Decision Tree controls do not directly change the Logistic Regression ranking. <b>Important:</b> content/history fields and the target are simulated prototype data.`;
 }
 
 function findNode(n,id){ if(n.id===id) return n; if(n.is_leaf) return null; return findNode(n.left,id)||findNode(n.right,id); }

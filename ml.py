@@ -39,8 +39,7 @@ FEATURE_LABELS = {
     "followers_log": "Follower Reach (log)",
 }
 
-# Fixed sub-score definitions. UI sliders adjust Brand vs Campaign inside Profile Fit,
-# and separately create a business Scenario Fit Score from Profile/Content/History.
+# Fixed sub-score definitions. Brand vs Campaign remains a Profile Fit sensitivity control.
 CONTENT_WEIGHTS = {
     "luxury_post_ratio_sim": 0.50,
     "jewelry_post_ratio_sim": 0.30,
@@ -50,16 +49,10 @@ HISTORY_EXPERIENCE_WEIGHT = 0.30
 HISTORY_SUCCESS_WEIGHT = 0.70
 HISTORY_FULL_EXPERIENCE_COUNT = 10.0
 
-# Final ranking blends the statistical model and the user-adjustable business scenario.
-# Keeping the two weights explicit makes the ranking logic easy to explain and audit.
-MODEL_RANK_WEIGHT = 0.50
-SCENARIO_RANK_WEIGHT = 0.50
 FIT_SCALE_LABEL = "Ordinal 5-level heuristic scale (1.00 / 0.75 / 0.50 / 0.25 / 0.00)"
 
 DEFAULT_CONTROLS = {
     "brand_weight": 0.50,
-    "profile_weight": 0.40,
-    "content_weight": 0.35,
     "min_followers": 0.0,
     "min_engagement": 0.0,
     "suitable_threshold": 0.50,
@@ -405,16 +398,6 @@ def filter_country(df: pd.DataFrame, country: str) -> pd.DataFrame:
     return df[df["country_group"] == country].copy()
 
 
-def _validate_scenario_weights(profile_weight: float, content_weight: float) -> tuple[float, float, float]:
-    pw = float(profile_weight)
-    cw = float(content_weight)
-    if pw < 0 or cw < 0 or pw > 1 or cw > 1:
-        raise ValueError("Profile and Content weights must be between 0 and 1.")
-    if pw + cw > 1.000001:
-        raise ValueError("Profile weight + Content weight cannot exceed 100% because History weight is automatic.")
-    hw = max(0.0, 1.0 - pw - cw)
-    return pw, cw, hw
-
 
 @lru_cache(maxsize=192)
 def train_context(
@@ -485,32 +468,13 @@ def score_creators(
     platform: str = "All",
     country: str = "All",
     brand_weight: float = 0.50,
-    profile_weight: float = 0.40,
-    content_weight: float = 0.35,
     min_followers: float = 0.0,
     min_engagement: float = 0.0,
     suitable_threshold: float = 0.50,
     tree_depth: int = 4,
 ) -> tuple[ContextModel, pd.DataFrame, dict]:
-    pw, cw, hw = _validate_scenario_weights(profile_weight, content_weight)
     model = train_context(brand, campaign, country, round(float(brand_weight), 4), int(tree_depth))
     scored = model.scored.copy()
-
-    scored["scenario_score"] = (
-        pw * scored["profile_fit"]
-        + cw * scored["content_fit"]
-        + hw * scored["campaign_history_score"]
-    ).clip(0.0, 1.0)
-
-    # Final Ranking Score deliberately combines two different signals:
-    #   1) Logistic Regression probability = learned statistical signal
-    #   2) Scenario Fit = user-adjustable business-priority signal
-    # As Profile / Content / History sliders move, scenario_score changes and therefore
-    # the ranking can re-order while the Logistic Regression coefficients remain intact.
-    scored["final_score"] = (
-        MODEL_RANK_WEIGHT * scored["selection_probability"]
-        + SCENARIO_RANK_WEIGHT * scored["scenario_score"]
-    ).clip(0.0, 1.0)
 
     if platform and platform != "All":
         platform_key = platform.strip().lower()
@@ -524,20 +488,17 @@ def score_creators(
     threshold = float(np.clip(suitable_threshold, 0.0, 1.0))
     scored["tree_suitable"] = scored["tree_probability"] >= threshold
 
-    # Rank primarily by the blended Final Ranking Score.
-    # Model probability and Scenario Fit are retained as deterministic tie-breakers.
+    # Final ranking is based solely on Logistic Regression probability.
+    # Engagement and Followers are deterministic tie-breakers only.
     scored = scored.sort_values(
-        ["final_score", "selection_probability", "scenario_score", "engagement_rate", "followers"],
-        ascending=[False, False, False, False, False],
+        ["selection_probability", "engagement_rate", "followers"],
+        ascending=[False, False, False],
     ).reset_index(drop=True)
     scored["rank"] = np.arange(1, len(scored) + 1)
 
     control_summary = {
         "brand_weight": model.brand_weight,
         "campaign_weight": 1.0 - model.brand_weight,
-        "profile_weight": pw,
-        "content_weight": cw,
-        "history_weight": hw,
         "min_followers": float(min_followers),
         "min_engagement": float(min_engagement),
         "suitable_threshold": threshold,
@@ -635,9 +596,7 @@ def creator_record(row: pd.Series) -> dict:
         "fashion_post_ratio": float(row["fashion_apparel_post_ratio_sim"]),
         "past_campaign_count": int(round(float(row["past_campaign_count_sim"]))),
         "past_campaign_success_rate": float(row["past_campaign_success_rate_sim"]),
-        "scenario_score": float(row.get("scenario_score", np.nan)),
         "selection_probability": float(row["selection_probability"]),
-        "final_score": float(row.get("final_score", row["selection_probability"])),
         "tree_probability": float(row.get("tree_probability", np.nan)),
         "tree_suitable": bool(row.get("tree_suitable", False)),
         "rank": int(row["rank"]),
@@ -756,23 +715,10 @@ def fit_method_summary(brand_weight: float = 0.50) -> dict:
     }
 
 
-def scenario_summary(profile_weight: float, content_weight: float) -> dict:
-    pw, cw, hw = _validate_scenario_weights(profile_weight, content_weight)
-    return {
-        "profile_weight": pw,
-        "content_weight": cw,
-        "history_weight": hw,
-        "label": f"Scenario Fit = {pw*100:.0f}% Profile + {cw*100:.0f}% Content + {hw*100:.0f}% History",
-        "note": "Scenario weights are business sensitivity controls; they do not overwrite Logistic Regression coefficients. Scenario Fit contributes 50% of the Final Ranking Score.",
-    }
-
-
 def ranking_summary() -> dict:
     return {
-        "model_weight": MODEL_RANK_WEIGHT,
-        "scenario_weight": SCENARIO_RANK_WEIGHT,
-        "label": f"Final Ranking = {MODEL_RANK_WEIGHT*100:.0f}% Model Probability + {SCENARIO_RANK_WEIGHT*100:.0f}% Scenario Fit",
-        "note": "Profile / Content / History sliders can re-order creators through Scenario Fit. Tree Depth and Suitable Threshold remain interpretation controls and do not directly change the final ranking score.",
+        "label": "Ranking = Logistic Regression predicted probability",
+        "note": "Final candidate ranking uses only the Logistic Regression probability. No business Scenario Score is blended into the ranking. Brand ↔ Campaign remains a Profile Fit sensitivity control; filters and Decision Tree controls have their separate roles.",
     }
 
 

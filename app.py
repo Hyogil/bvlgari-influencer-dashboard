@@ -16,7 +16,6 @@ from ml import (
     explain_creator,
     fit_method_summary,
     ranking_summary,
-    scenario_summary,
     score_creators,
     top_records,
 )
@@ -25,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 RESOURCE_DIR = BASE_DIR / "Resource"
 
-app = FastAPI(title="Influencer Selection Dashboard", version="6.1.0")
+app = FastAPI(title="Influencer Selection Dashboard", version="6.2.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/Resource", StaticFiles(directory=RESOURCE_DIR), name="resource")
 
@@ -47,10 +46,6 @@ def options():
         "repaired_rows": int(DATA.repaired_rows),
         "defaults": DEFAULT_CONTROLS,
         "fit_method": fit_method_summary(DEFAULT_CONTROLS["brand_weight"]),
-        "scenario": scenario_summary(
-            DEFAULT_CONTROLS["profile_weight"],
-            DEFAULT_CONTROLS["content_weight"],
-        ),
         "ranking": ranking_summary(),
     }
 
@@ -63,8 +58,6 @@ def analyze(
     country: str = Query("KR"),
     selected_handle: str | None = Query(None),
     brand_weight: float = Query(0.50, ge=0.0, le=1.0),
-    profile_weight: float = Query(0.40, ge=0.0, le=1.0),
-    content_weight: float = Query(0.35, ge=0.0, le=1.0),
     min_followers: float = Query(0.0, ge=0.0),
     min_engagement: float = Query(0.0, ge=0.0, le=50.0),
     suitable_threshold: float = Query(0.50, ge=0.0, le=1.0),
@@ -76,9 +69,6 @@ def analyze(
         raise HTTPException(400, f"Unknown campaign: {campaign}")
     if country not in VALID_COUNTRIES:
         raise HTTPException(400, f"Unknown country: {country}")
-    if profile_weight + content_weight > 1.000001:
-        raise HTTPException(400, "Profile weight + Content weight cannot exceed 100%; History is the automatic remainder.")
-
     try:
         model, scored, controls = score_creators(
             brand=brand,
@@ -86,8 +76,6 @@ def analyze(
             platform=platform,
             country=country,
             brand_weight=brand_weight,
-            profile_weight=profile_weight,
-            content_weight=content_weight,
             min_followers=min_followers,
             min_engagement=min_engagement,
             suitable_threshold=suitable_threshold,
@@ -125,7 +113,6 @@ def analyze(
         "dataset_size": int(len(DATA.creators)),
         "repaired_rows": int(DATA.repaired_rows),
         "fit_method": fit_method_summary(controls["brand_weight"]),
-        "scenario": scenario_summary(controls["profile_weight"], controls["content_weight"]),
         "ranking": ranking_summary(),
         "target_type": "simulated_historical_outcome",
         "target_positive_rate": model.target_positive_rate,
