@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#070b12" />
+  <title>BVLGARI Influencer Selection Dashboard</title>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" />
+  <link rel="stylesheet" href="/static/style.css?v=8feature" />
+</head>
+<body>
+  <header class="brand-header">
+    <div>
+      <div class="brand-mark">BVLGARI</div>
+      <h1>Influencer Selection Dashboard</h1>
+      <p>Enhanced 8-feature campaign screening model · Logistic Regression + Decision Tree</p>
+    </div>
+    <div class="model-badge"><i class="fa-solid fa-flask"></i> Simulated historical outcome prototype</div>
+  </header>
+
+  <main class="shell">
+    <section class="panel control-panel">
+      <div class="controls">
+        <label><span><i class="fa-solid fa-gem"></i> Brand</span><select id="brand"></select></label>
+        <label><span><i class="fa-solid fa-earth-asia"></i> Country</span><select id="country"></select></label>
+        <label><span><i class="fa-solid fa-hashtag"></i> Platform</span><select id="platform"></select></label>
+        <label><span><i class="fa-solid fa-bullseye"></i> Campaign</span><select id="campaign"></select></label>
+        <button id="runBtn" type="button"><i class="fa-solid fa-play"></i> Run analysis</button>
+      </div>
+    </section>
+
+    <section class="section-head">
+      <div>
+        <h2><i class="fa-solid fa-ranking-star"></i> Top 3 recommended influencers</h2>
+        <p>Ranked by Logistic Regression probability using the enhanced 8-feature model.</p>
+      </div>
+      <div id="contextLabel" class="context-chip">—</div>
+    </section>
+    <section id="top3" class="top3-grid"></section>
+
+    <section class="dashboard-grid">
+      <aside class="panel model-summary">
+        <h3><i class="fa-solid fa-table-list"></i> Model summary</h3>
+        <div class="model-line"><span class="num-dot">1</span><div><b>Logistic Regression</b><small>Ranks creators by simulated campaign-success probability.</small></div></div>
+        <div class="model-line"><span class="num-dot">2</span><div><b>Decision Tree</b><small>Explains rule path and leaf-level probability.</small></div></div>
+        <div class="divider"></div>
+        <div class="summary-stat"><span>Dataset</span><b id="datasetSize">—</b></div>
+        <div class="summary-stat"><span>Training cohort</span><b id="trainingSize">—</b></div>
+        <div class="summary-stat"><span>Candidate set</span><b id="sampleSize">—</b></div>
+        <div class="summary-stat"><span>Repaired rows</span><b id="repairedRows">—</b></div>
+        <div class="summary-stat"><span>Brand Fit rule</span><b id="fitMethod">50% Brand + 50% Campaign</b></div>
+        <div class="note warning">
+          <b><i class="fa-solid fa-triangle-exclamation"></i> Academic note</b>
+          Added historical-content and outcome fields are simulated prototype data, not observed BVLGARI sales/ROAS history.
+        </div>
+      </aside>
+
+      <section class="panel ranking-card">
+        <h3><i class="fa-solid fa-list-ol"></i> Top 10 candidates by probability <span>(Logistic Regression)</span></h3>
+        <p class="panel-sub">Click a candidate to update the formula, sigmoid point, and Decision Tree path.</p>
+        <div id="ranking" class="ranking-list"></div>
+      </section>
+
+      <section class="panel formula-card">
+        <div class="panel-title-row">
+          <h3><i class="fa-solid fa-function"></i> Logistic Regression Formula & Score</h3>
+          <span id="formulaSelected" class="selected-chip">—</span>
+        </div>
+        <div class="formula-top">
+          <div class="formula-box"><span class="step-dot">1</span><div><small>Logistic function</small><strong>P(Y=1) = 1 / (1 + e<sup>−z</sup>)</strong></div></div>
+          <div class="formula-box"><span class="step-dot">2</span><div><small>Standardized logit</small><strong>z = β₀ + Σ βⱼZⱼ</strong><small>Z = (X − μ) / σ</small></div></div>
+        </div>
+        <div class="formula-body">
+          <div>
+            <h4><i class="fa-solid fa-table-cells"></i> Feature values</h4>
+            <div id="featureValues" class="mini-list"></div>
+          </div>
+          <div>
+            <h4><i class="fa-solid fa-chart-column"></i> Contributions to z</h4>
+            <div id="contributions" class="mini-list"></div>
+          </div>
+          <div class="sigmoid-wrap">
+            <h4><span class="step-dot small">3</span> Sigmoid curve</h4>
+            <svg id="sigmoidSvg" viewBox="0 0 300 205" role="img" aria-label="Sigmoid curve"></svg>
+            <div id="sigmoidCaption" class="caption">—</div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel tree-panel">
+      <div class="section-head compact">
+        <div>
+          <h2><i class="fa-solid fa-code-branch"></i> Decision Tree for influencer selection</h2>
+          <p>Full tree fitted to the current training cohort; selected creator path is highlighted.</p>
+        </div>
+        <div class="legend"><span class="swatch selected"></span> Selected path <span class="swatch"></span> Other node</div>
+      </div>
+      <div class="tree-layout">
+        <div class="tree-canvas"><svg id="treeSvg" role="img" aria-label="Decision Tree"></svg></div>
+        <aside class="tree-side">
+          <div class="side-card">
+            <h4><i class="fa-solid fa-route"></i> Decision path</h4>
+            <div id="decisionPath"></div>
+          </div>
+          <div class="side-card">
+            <h4><i class="fa-solid fa-user-check"></i> Selected influencer</h4>
+            <div id="selectedInfo"></div>
+          </div>
+          <div class="side-card takeaway-card">
+            <h4><i class="fa-solid fa-lightbulb"></i> Key takeaway</h4>
+            <div id="takeaway">—</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js?v=8feature"></script>
+</body>
+</html>
