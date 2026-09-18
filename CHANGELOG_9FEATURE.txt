@@ -1,0 +1,32 @@
+BVLGARI Dashboard — 9-feature direct Logistic Regression patch
+
+Changed model features:
+1. Brand Score
+2. Campaign Score
+3. Luxury Post Ratio
+4. Jewelry Post Ratio
+5. Fashion / Apparel Post Ratio
+6. Past Campaign Count
+7. Past Campaign Success Rate
+8. Engagement Rate
+9. Follower Reach (log)
+
+Removed from the model/UI:
+- Profile Fit weighted blend
+- Content Fit = 50/30/20 weighted composite
+- Campaign History Score = 30/70 weighted composite
+- Brand ↔ Campaign weight slider
+- Scenario Score
+
+Ranking:
+- Logistic Regression predicted probability only
+
+Unchanged controls:
+- Minimum Followers
+- Minimum Engagement
+- Suitable Threshold (Decision Tree label)
+- Tree Depth
+
+Important:
+The content/history variables and target remain simulated prototype data.
+Brand Score and Campaign Score are still heuristic ordinal input scores, but they are NOT manually blended; each enters Logistic Regression as a separate feature.

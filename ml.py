@@ -22,37 +22,37 @@ VALID_PLATFORMS = {"youtube", "instagram", "tiktok"}
 VALID_COUNTRIES = {"All", "KR", "Global"}
 KOREA_LOCATION_KEYS = {"kr", "south korea", "korea", "republic of korea", "korea, republic of"}
 
-# The enhanced model groups the original detailed variables into five business-meaningful features.
+# Direct 9-feature model.
+# No manually weighted composite Content Fit, Campaign History Score, or Profile Fit is used.
+# Each source variable enters Logistic Regression separately, so its relative contribution
+# is learned through the standardized regression coefficients.
 FEATURES = [
-    "profile_fit",
-    "content_fit",
-    "campaign_history_score",
+    "brand_score",
+    "campaign_score",
+    "luxury_post_ratio_sim",
+    "jewelry_post_ratio_sim",
+    "fashion_apparel_post_ratio_sim",
+    "past_campaign_count_sim",
+    "past_campaign_success_rate_sim",
     "engagement_rate",
     "followers_log",
 ]
 
 FEATURE_LABELS = {
-    "profile_fit": "Profile Fit",
-    "content_fit": "Content Fit",
-    "campaign_history_score": "Campaign History Score",
+    "brand_score": "Brand Score",
+    "campaign_score": "Campaign Score",
+    "luxury_post_ratio_sim": "Luxury Post Ratio",
+    "jewelry_post_ratio_sim": "Jewelry Post Ratio",
+    "fashion_apparel_post_ratio_sim": "Fashion / Apparel Post Ratio",
+    "past_campaign_count_sim": "Past Campaign Count",
+    "past_campaign_success_rate_sim": "Past Campaign Success Rate",
     "engagement_rate": "Engagement Rate",
     "followers_log": "Follower Reach (log)",
 }
 
-# Fixed sub-score definitions. Brand vs Campaign remains a Profile Fit sensitivity control.
-CONTENT_WEIGHTS = {
-    "luxury_post_ratio_sim": 0.50,
-    "jewelry_post_ratio_sim": 0.30,
-    "fashion_apparel_post_ratio_sim": 0.20,
-}
-HISTORY_EXPERIENCE_WEIGHT = 0.30
-HISTORY_SUCCESS_WEIGHT = 0.70
-HISTORY_FULL_EXPERIENCE_COUNT = 10.0
-
-FIT_SCALE_LABEL = "Ordinal 5-level heuristic scale (1.00 / 0.75 / 0.50 / 0.25 / 0.00)"
+FIT_SCALE_LABEL = "Brand/Campaign heuristic score scale: 1.00 / 0.75 / 0.50 / 0.25 / 0.00"
 
 DEFAULT_CONTROLS = {
-    "brand_weight": 0.50,
     "min_followers": 0.0,
     "min_engagement": 0.0,
     "suitable_threshold": 0.50,
@@ -211,7 +211,6 @@ class ContextModel:
     brand: str
     campaign: str
     country: str
-    brand_weight: float
     tree_depth: int
     scored: pd.DataFrame
     logistic: Pipeline
@@ -221,7 +220,7 @@ class ContextModel:
 
 
 def _read_dataset(path: Path) -> pd.DataFrame:
-    """Read the enriched Excel dataset used by the 5-feature model."""
+    """Read the enriched Excel dataset used by the direct 9-feature model."""
     if path.suffix.lower() in {".xlsx", ".xlsm"}:
         return pd.read_excel(path, sheet_name=DATA_SHEET, engine="openpyxl")
     try:
@@ -358,35 +357,18 @@ def _profile_score(niche: str, profile: Dict[str, float]) -> float:
     return 0.00
 
 
-def compute_profile_fit(niche: str, brand: str, campaign: str, brand_weight: float) -> tuple[float, float, float]:
-    """Return (profile_fit, brand_score, campaign_score)."""
-    bw = float(np.clip(brand_weight, 0.0, 1.0))
-    cw = 1.0 - bw
+def compute_context_scores(niche: str, brand: str, campaign: str) -> tuple[float, float]:
+    """Return independent (brand_score, campaign_score) without a blending weight."""
     brand_score = _profile_score(niche, BRAND_PROFILES[brand])
     campaign_score = _profile_score(niche, CAMPAIGN_PROFILES[campaign])
-    profile_fit = bw * brand_score + cw * campaign_score
-    return float(np.clip(profile_fit, 0.0, 1.0)), float(brand_score), float(campaign_score)
+    return float(brand_score), float(campaign_score)
 
 
-def enrich_context(df: pd.DataFrame, brand: str, campaign: str, brand_weight: float) -> pd.DataFrame:
+def enrich_context(df: pd.DataFrame, brand: str, campaign: str) -> pd.DataFrame:
     out = df.copy()
-    scores = out["niche"].map(lambda n: compute_profile_fit(n, brand, campaign, brand_weight))
-    out["profile_fit"] = scores.map(lambda x: x[0])
-    out["brand_score"] = scores.map(lambda x: x[1])
-    out["campaign_score"] = scores.map(lambda x: x[2])
-
-    out["content_fit"] = (
-        CONTENT_WEIGHTS["luxury_post_ratio_sim"] * out["luxury_post_ratio_sim"]
-        + CONTENT_WEIGHTS["jewelry_post_ratio_sim"] * out["jewelry_post_ratio_sim"]
-        + CONTENT_WEIGHTS["fashion_apparel_post_ratio_sim"] * out["fashion_apparel_post_ratio_sim"]
-    ).clip(0.0, 1.0)
-
-    experience_score = (out["past_campaign_count_sim"] / HISTORY_FULL_EXPERIENCE_COUNT).clip(0.0, 1.0)
-    out["campaign_experience_score"] = experience_score
-    out["campaign_history_score"] = (
-        HISTORY_EXPERIENCE_WEIGHT * experience_score
-        + HISTORY_SUCCESS_WEIGHT * out["past_campaign_success_rate_sim"]
-    ).clip(0.0, 1.0)
+    scores = out["niche"].map(lambda n: compute_context_scores(n, brand, campaign))
+    out["brand_score"] = scores.map(lambda x: x[0])
+    out["campaign_score"] = scores.map(lambda x: x[1])
     return out
 
 
@@ -404,7 +386,6 @@ def train_context(
     brand: str,
     campaign: str,
     country: str = "All",
-    brand_weight: float = 0.50,
     tree_depth: int = 4,
 ) -> ContextModel:
     if brand not in BRAND_PROFILES:
@@ -416,13 +397,12 @@ def train_context(
     if not 1 <= int(tree_depth) <= 8:
         raise ValueError("Tree depth must be between 1 and 8.")
 
-    bw = round(float(np.clip(brand_weight, 0.0, 1.0)), 4)
     depth = int(tree_depth)
     country_df = filter_country(DATA.creators, country)
     if len(country_df) < 20:
         raise ValueError(f"Not enough creators in country filter: {country}")
 
-    df = enrich_context(country_df, brand, campaign, bw)
+    df = enrich_context(country_df, brand, campaign)
     y = df[TARGET_COLUMN].astype(int)
     if y.nunique() < 2:
         raise ValueError(f"Target has only one class in country filter: {country}")
@@ -452,7 +432,6 @@ def train_context(
         brand=brand,
         campaign=campaign,
         country=country,
-        brand_weight=bw,
         tree_depth=depth,
         scored=scored,
         logistic=logistic,
@@ -467,13 +446,12 @@ def score_creators(
     campaign: str,
     platform: str = "All",
     country: str = "All",
-    brand_weight: float = 0.50,
     min_followers: float = 0.0,
     min_engagement: float = 0.0,
     suitable_threshold: float = 0.50,
     tree_depth: int = 4,
 ) -> tuple[ContextModel, pd.DataFrame, dict]:
-    model = train_context(brand, campaign, country, round(float(brand_weight), 4), int(tree_depth))
+    model = train_context(brand, campaign, country, int(tree_depth))
     scored = model.scored.copy()
 
     if platform and platform != "All":
@@ -497,8 +475,6 @@ def score_creators(
     scored["rank"] = np.arange(1, len(scored) + 1)
 
     control_summary = {
-        "brand_weight": model.brand_weight,
-        "campaign_weight": 1.0 - model.brand_weight,
         "min_followers": float(min_followers),
         "min_engagement": float(min_engagement),
         "suitable_threshold": threshold,
@@ -524,14 +500,23 @@ def _format_threshold(feature: str, threshold: float) -> str:
     if feature == "followers_log":
         followers = max(0.0, float(np.expm1(threshold)))
         return f"{_compact_count(followers)} (log {threshold:.2f})"
-    if feature in {"profile_fit", "content_fit", "campaign_history_score"}:
+    if feature in {
+        "luxury_post_ratio_sim",
+        "jewelry_post_ratio_sim",
+        "fashion_apparel_post_ratio_sim",
+        "past_campaign_success_rate_sim",
+    }:
+        return f"{threshold * 100:.1f}%"
+    if feature in {"brand_score", "campaign_score"}:
         return f"{threshold:.3f}"
+    if feature == "past_campaign_count_sim":
+        return f"{threshold:.1f} campaigns"
     return f"{threshold:.2f}"
 
 
 def _format_actual(feature: str, value: float) -> str:
-    if feature in {"profile_fit", "content_fit", "campaign_history_score"}:
-        return f"{value:.3f}"
+    if feature == "past_campaign_count_sim":
+        return f"{int(round(value))} campaigns"
     return _format_threshold(feature, value)
 
 
@@ -587,10 +572,6 @@ def creator_record(row: pd.Series) -> dict:
         "location": str(row.get("location", "")) if pd.notna(row.get("location", "")) else "",
         "brand_score": float(row["brand_score"]),
         "campaign_score": float(row["campaign_score"]),
-        "profile_fit": float(row["profile_fit"]),
-        "content_fit": float(row["content_fit"]),
-        "campaign_history_score": float(row["campaign_history_score"]),
-        "campaign_experience_score": float(row["campaign_experience_score"]),
         "luxury_post_ratio": float(row["luxury_post_ratio_sim"]),
         "jewelry_post_ratio": float(row["jewelry_post_ratio_sim"]),
         "fashion_post_ratio": float(row["fashion_apparel_post_ratio_sim"]),
@@ -643,7 +624,7 @@ def logistic_explanation(model: ContextModel, row: pd.DataFrame) -> dict:
         "sklearn_probability": sklearn_probability,
         "features": features,
         "formula": "P(Y=1)=1/(1+e^(-z))",
-        "logit_formula": "z=β0+ΣβjZj (5 features)",
+        "logit_formula": "z=β0+ΣβjZj (9 features)",
         "standardization_formula": "Zj=(Xj-μj)/σj",
     }
 
@@ -699,17 +680,17 @@ def explain_creator(
     }
 
 
-def fit_method_summary(brand_weight: float = 0.50) -> dict:
-    bw = float(np.clip(brand_weight, 0.0, 1.0))
+def fit_method_summary() -> dict:
     return {
-        "brand_weight": bw,
-        "campaign_weight": 1.0 - bw,
-        "label": f"5-feature model · Profile Fit uses {int(round(bw*100))}% Brand + {int(round((1-bw)*100))}% Campaign",
+        "label": "9-feature direct Logistic Regression · no manually weighted composite scores",
         "scale": FIT_SCALE_LABEL,
         "feature_count": len(FEATURES),
         "features": [FEATURE_LABELS[f] for f in FEATURES],
-        "content_fit_formula": "50% Luxury + 30% Jewelry + 20% Fashion/Apparel",
-        "history_formula": "30% Experience + 70% Past Success Rate",
+        "weighting_note": (
+            "Brand Score, Campaign Score, Luxury/Jewelry/Fashion ratios, Past Campaign Count, "
+            "Past Campaign Success Rate, Engagement, and log Followers enter the model separately. "
+            "Logistic Regression learns their standardized coefficients."
+        ),
         "target": TARGET_COLUMN,
         "target_note": "Synthetic historical outcome for prototype use only",
     }
@@ -718,7 +699,11 @@ def fit_method_summary(brand_weight: float = 0.50) -> dict:
 def ranking_summary() -> dict:
     return {
         "label": "Ranking = Logistic Regression predicted probability",
-        "note": "Final candidate ranking uses only the Logistic Regression probability. No business Scenario Score is blended into the ranking. Brand ↔ Campaign remains a Profile Fit sensitivity control; filters and Decision Tree controls have their separate roles.",
+        "note": (
+            "Final candidate ranking uses only the 9-feature Logistic Regression probability. "
+            "No Scenario Score, Content Fit weighted sum, Campaign History weighted sum, or "
+            "Brand↔Campaign blend is used."
+        ),
     }
 
 
@@ -733,5 +718,5 @@ def data_quality_summary() -> dict:
         "engagement_imputed": int(df["engagement_imputed"].sum()),
         "verified_imputed": int(df["verified_imputed"].sum()),
         "fake_followers_nonzero": int((df["fake_followers_pct"].fillna(0) != 0).sum()),
-        "note": "Model uses 5 interpretable features: Profile Fit, Content Fit, Campaign History Score, Engagement Rate, and log Followers. Added *_sim variables and the target remain synthetic prototype data.",
+        "note": "Model uses 9 direct features with no manually weighted composite Content Fit, Campaign History Score, or Profile Fit. Added *_sim variables and the target remain synthetic prototype data.",
     }

@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 RESOURCE_DIR = BASE_DIR / "Resource"
 
-app = FastAPI(title="Influencer Selection Dashboard", version="6.2.0")
+app = FastAPI(title="Influencer Selection Dashboard", version="7.0.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/Resource", StaticFiles(directory=RESOURCE_DIR), name="resource")
 
@@ -45,7 +45,7 @@ def options():
         "sample_size": int(len(DATA.creators)),
         "repaired_rows": int(DATA.repaired_rows),
         "defaults": DEFAULT_CONTROLS,
-        "fit_method": fit_method_summary(DEFAULT_CONTROLS["brand_weight"]),
+        "fit_method": fit_method_summary(),
         "ranking": ranking_summary(),
     }
 
@@ -57,7 +57,6 @@ def analyze(
     platform: str = Query("Instagram"),
     country: str = Query("KR"),
     selected_handle: str | None = Query(None),
-    brand_weight: float = Query(0.50, ge=0.0, le=1.0),
     min_followers: float = Query(0.0, ge=0.0),
     min_engagement: float = Query(0.0, ge=0.0, le=50.0),
     suitable_threshold: float = Query(0.50, ge=0.0, le=1.0),
@@ -75,7 +74,6 @@ def analyze(
             campaign=campaign,
             platform=platform,
             country=country,
-            brand_weight=brand_weight,
             min_followers=min_followers,
             min_engagement=min_engagement,
             suitable_threshold=suitable_threshold,
@@ -112,7 +110,7 @@ def analyze(
         "training_size": int(model.training_size),
         "dataset_size": int(len(DATA.creators)),
         "repaired_rows": int(DATA.repaired_rows),
-        "fit_method": fit_method_summary(controls["brand_weight"]),
+        "fit_method": fit_method_summary(),
         "ranking": ranking_summary(),
         "target_type": "simulated_historical_outcome",
         "target_positive_rate": model.target_positive_rate,
@@ -134,6 +132,6 @@ def health():
         "status": "ok",
         "creators": int(len(DATA.creators)),
         "repaired_rows": int(DATA.repaired_rows),
-        "model_features": 5,
+        "model_features": 9,
         "dataset_file": "creators_enriched_synthetic_v1.xlsx",
     }

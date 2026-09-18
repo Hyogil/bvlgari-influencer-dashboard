@@ -56,7 +56,6 @@ function fillSelect(id, values){ $(id).innerHTML = values.map(v=>`<option>${esca
 
 function getControlValues(){
   return {
-    brand_weight: Number($('brandWeight').value)/100,
     min_followers: Number($('minFollowers').value),
     min_engagement: Number($('minEngagement').value),
     suitable_threshold: Number($('suitableThreshold').value)/100,
@@ -66,9 +65,6 @@ function getControlValues(){
 
 
 function updateControlLabels(){
-  const brand=Number($('brandWeight').value);
-  $('brandWeightLabel').textContent=`${brand}%`;
-  $('campaignWeightLabel').textContent=`${100-brand}%`;
   $('minFollowersLabel').textContent=fmtCompact(Number($('minFollowers').value));
   $('minEngagementLabel').textContent=`${Number($('minEngagement').value).toFixed(1)}%`;
   $('suitableThresholdLabel').textContent=`${Number($('suitableThreshold').value)}%`;
@@ -76,7 +72,7 @@ function updateControlLabels(){
 }
 
 function bindControls(){
-  ['brandWeight','minFollowers','minEngagement','suitableThreshold','treeDepth'].forEach(id=>{
+  ['minFollowers','minEngagement','suitableThreshold','treeDepth'].forEach(id=>{
     $(id).addEventListener('input',updateControlLabels);
     $(id).addEventListener('change',()=>runAnalysis(null));
   });
@@ -96,7 +92,6 @@ async function init(){
   $('platform').value='Instagram';
 
   const d=o.defaults || {};
-  $('brandWeight').value=String(Math.round(Number(d.brand_weight ?? .5)*100));
   $('minFollowers').value=String(Number(d.min_followers ?? 0));
   $('minEngagement').value=String(Number(d.min_engagement ?? 0));
   $('suitableThreshold').value=String(Math.round(Number(d.suitable_threshold ?? .5)*100));
@@ -119,7 +114,6 @@ async function runAnalysis(selectedHandle=null){
       country:$('country').value,
       campaign:$('campaign').value,
       platform:$('platform').value,
-      brand_weight:String(c.brand_weight),
       min_followers:String(c.min_followers),
       min_engagement:String(c.min_engagement),
       suitable_threshold:String(c.suitable_threshold),
@@ -144,7 +138,7 @@ function renderAll(){
   $('datasetSize').textContent = current.dataset_size.toLocaleString();
   $('repairedRows').textContent = current.repaired_rows.toLocaleString();
   $('contextLabel').textContent = `${current.context.brand} · ${current.context.country} · ${current.context.platform} · ${current.context.campaign}`;
-  $('fitMethod').textContent = `${Math.round(current.context.brand_weight*100)}% Brand + ${Math.round(current.context.campaign_weight*100)}% Campaign`;
+  $('fitMethod').textContent = current.fit_method?.label || '9-feature direct model';
   renderTop3();
   renderRanking();
   renderLogisticExplanation();
@@ -177,7 +171,7 @@ function renderTop3(){
       <div class="metrics">
         <div class="metric"><strong>${fmtCompact(c.followers)}</strong><span>Followers</span></div>
         <div class="metric"><strong>${c.engagement_rate.toFixed(1)}%${c.engagement_imputed?'*':''}</strong><span>Engagement${c.engagement_imputed?' (imputed)':''}</span></div>
-        <div class="metric"><strong>${(c.content_fit*100).toFixed(1)}</strong><span>Content Fit /100</span></div>
+        <div class="metric"><strong>${(c.past_campaign_success_rate*100).toFixed(1)}%</strong><span>Past Campaign Success</span></div>
       </div>
     </article>`).join('');
   document.querySelectorAll('.creator-card').forEach(el=>el.addEventListener('click',()=>runAnalysis(el.dataset.handle)));
@@ -289,15 +283,19 @@ function renderSelected(){
       </div>
     </div>
     <div class="selected-grid five">
-      <div><b>${(s.selection_probability*100).toFixed(1)}%</b>Predicted Success Probability</div>
-      <div><b>${s.profile_fit.toFixed(3)}</b>Profile Fit</div>
-      <div><b>${s.content_fit.toFixed(3)}</b>Content Fit</div>
-      <div><b>${s.campaign_history_score.toFixed(3)}</b>History Score</div>
+      <div class="wide-metric"><b>${(s.selection_probability*100).toFixed(1)}%</b>Predicted Success Probability</div>
+      <div><b>${s.brand_score.toFixed(3)}</b>Brand Score</div>
+      <div><b>${s.campaign_score.toFixed(3)}</b>Campaign Score</div>
+      <div><b>${(s.luxury_post_ratio*100).toFixed(1)}%</b>Luxury Post Ratio</div>
+      <div><b>${(s.jewelry_post_ratio*100).toFixed(1)}%</b>Jewelry Post Ratio</div>
+      <div><b>${(s.fashion_post_ratio*100).toFixed(1)}%</b>Fashion / Apparel Ratio</div>
+      <div><b>${s.past_campaign_count}</b>Past Campaign Count</div>
+      <div><b>${(s.past_campaign_success_rate*100).toFixed(1)}%</b>Past Campaign Success</div>
       <div><b>${s.engagement_rate.toFixed(1)}%${s.engagement_imputed?'*':''}</b>Engagement</div>
       <div><b>${fmtCompact(s.followers)}</b>Followers</div>
       <div><b>${(s.tree_probability*100).toFixed(1)}%</b>Tree leaf probability</div>
     </div>`;
-  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b> is determined solely by the <b>Logistic Regression predicted probability</b>. The model uses 5 features: Profile Fit, Content Fit, Campaign History Score, Engagement Rate, and log Followers. Brand ↔ Campaign changes the engineered Profile Fit and retrains the model as a sensitivity analysis. Minimum Followers and Engagement filter candidates. Suitable Threshold changes the Tree label and Tree Depth changes Tree complexity; those Decision Tree controls do not directly change the Logistic Regression ranking. <b>Important:</b> content/history fields and the target are simulated prototype data.`;
+  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b> is determined solely by the <b>9-feature Logistic Regression predicted probability</b>. Brand Score, Campaign Score, Luxury/Jewelry/Fashion ratios, Past Campaign Count, Past Campaign Success Rate, Engagement, and log Followers enter the model separately. There is <b>no manually weighted Content Fit, History Score, Profile Fit, or Scenario Score</b>. Minimum Followers and Engagement filter candidates. Suitable Threshold changes the Tree label and Tree Depth changes Tree complexity; those Decision Tree controls do not directly change the Logistic Regression ranking. <b>Important:</b> content/history fields and the target are simulated prototype data.`;
 }
 
 function findNode(n,id){ if(n.id===id) return n; if(n.is_leaf) return null; return findNode(n.left,id)||findNode(n.right,id); }
