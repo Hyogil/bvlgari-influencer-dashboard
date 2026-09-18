@@ -16,23 +16,24 @@ MODEL FEATURES (5)
 4. Engagement Rate
 5. Follower Reach (log1p followers)
 
-7 CONTROLS
+8 DISPLAYED CONTROLS (7 sliders + 1 automatic value)
 1. Brand <-> Campaign Weight (changes Profile Fit and therefore the model input)
-2. Profile Fit Weight (Scenario Fit only)
-3. Content Fit Weight (Scenario Fit only)
-   - History Weight = 100% - Profile Weight - Content Weight (automatic)
-4. Minimum Followers (candidate filter after training)
-5. Minimum Engagement (candidate filter after training)
-6. Suitable Threshold (Decision Tree leaf label threshold)
-7. Tree Depth (Decision Tree max_depth)
+2. Profile Fit Weight (changes Scenario Fit and Final Ranking Score)
+3. Content Fit Weight (changes Scenario Fit and Final Ranking Score)
+4. Campaign History Weight (automatic: 100% - Profile - Content)
+5. Minimum Followers (candidate filter after training)
+6. Minimum Engagement (candidate filter after training)
+7. Suitable Threshold (Decision Tree leaf label threshold)
+8. Tree Depth (Decision Tree max_depth)
 
 IMPORTANT DISTINCTION
-- Logistic Regression remains the primary ranking model.
+- Logistic Regression produces Model Probability from the five model features.
 - Scenario Fit = Profile/Content/History weighted business sensitivity score.
-- Scenario weights do NOT overwrite Logistic Regression beta coefficients.
+- Final Ranking Score = 50% Model Probability + 50% Scenario Fit.
+- Scenario weights do NOT overwrite Logistic Regression beta coefficients; they affect ranking through the separate Scenario Fit term.
 - Minimum Followers / Engagement filter the candidate list after the country cohort is trained.
 - Tree Depth affects only Decision Tree complexity.
-- Suitable Threshold affects Suitable / Not Suitable labeling, not Logistic probability.
+- Suitable Threshold affects Suitable / Not Suitable labeling, not Final Ranking Score.
 
 DEFAULT SCENARIO
 - Brand / Campaign = 50 / 50
@@ -62,4 +63,12 @@ UI UPDATE - COMPACT 8 CONTROL STRIP
 - 821-1449px: responsive 4 x 2 layout.
 - <=820px: responsive 2-column mobile layout.
 - Controls preserved: Brand/Campaign, Profile Fit, Content Fit, Campaign History (auto), Min Followers, Min Engagement, Threshold, Tree Depth.
-- No model/API logic was changed; this update is UI/layout only.
+- v6.1 additionally changes ranking logic so Scenario Fit directly contributes to Final Ranking Score.
+
+
+Ranking update (v6.1)
+---------------------
+Final Ranking Score = 50% Logistic Regression probability + 50% Scenario Fit.
+Profile / Content / History controls now directly affect ranking through Scenario Fit.
+Minimum Followers / Engagement continue to filter the candidate set.
+Suitable Threshold and Tree Depth remain Decision Tree interpretation controls and do not directly enter Final Ranking Score.

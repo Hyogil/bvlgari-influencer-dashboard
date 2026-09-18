@@ -15,6 +15,7 @@ from ml import (
     data_quality_summary,
     explain_creator,
     fit_method_summary,
+    ranking_summary,
     scenario_summary,
     score_creators,
     top_records,
@@ -24,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 RESOURCE_DIR = BASE_DIR / "Resource"
 
-app = FastAPI(title="Influencer Selection Dashboard", version="6.0.0")
+app = FastAPI(title="Influencer Selection Dashboard", version="6.1.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/Resource", StaticFiles(directory=RESOURCE_DIR), name="resource")
 
@@ -50,6 +51,7 @@ def options():
             DEFAULT_CONTROLS["profile_weight"],
             DEFAULT_CONTROLS["content_weight"],
         ),
+        "ranking": ranking_summary(),
     }
 
 
@@ -124,6 +126,7 @@ def analyze(
         "repaired_rows": int(DATA.repaired_rows),
         "fit_method": fit_method_summary(controls["brand_weight"]),
         "scenario": scenario_summary(controls["profile_weight"], controls["content_weight"]),
+        "ranking": ranking_summary(),
         "target_type": "simulated_historical_outcome",
         "target_positive_rate": model.target_positive_rate,
         "proxy_positive_rate": model.target_positive_rate,

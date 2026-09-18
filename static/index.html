@@ -7,7 +7,7 @@
   <title>BVLGARI Influencer Selection Dashboard</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" />
-  <link rel="stylesheet" href="/static/style.css?v=5feature-compact8-v1" />
+  <link rel="stylesheet" href="/static/style.css?v=rank61" />
 </head>
 <body>
   <header class="brand-header">
@@ -36,7 +36,7 @@
           <b>Scenario &amp; Model Controls</b>
           <span>Business assumptions · candidate filters · model controls</span>
         </div>
-        <div class="control-strip-note">History = auto remainder · Scenario weights do not replace Logistic β</div>
+        <div class="control-strip-note">History = auto remainder · Final Rank = 50% Model + 50% Scenario</div>
       </div>
 
       <div class="compact-controls-grid">
@@ -100,7 +100,7 @@
     <section class="section-head">
       <div>
         <h2><i class="fa-solid fa-ranking-star"></i> Top 3 recommended influencers</h2>
-        <p>Primary ranking = Logistic Regression probability. Scenario Fit is shown separately as a business sensitivity score.</p>
+        <p>Final ranking = 50% Logistic Regression probability + 50% Scenario Fit. Profile / Content / History weights can re-order the ranking.</p>
       </div>
       <div id="contextLabel" class="context-chip">—</div>
     </section>
@@ -109,7 +109,7 @@
     <section class="dashboard-grid">
       <aside class="panel model-summary">
         <h3><i class="fa-solid fa-table-list"></i> Model summary</h3>
-        <div class="model-line"><span class="num-dot">1</span><div><b>Logistic Regression</b><small>Ranks creators using five interpretable model features.</small></div></div>
+        <div class="model-line"><span class="num-dot">1</span><div><b>Logistic Regression</b><small>Produces Model Probability from five interpretable features.</small></div></div>
         <div class="model-line"><span class="num-dot">2</span><div><b>Decision Tree</b><small>Provides an independent rule path and leaf probability.</small></div></div>
         <div class="divider"></div>
         <div class="summary-stat"><span>Dataset</span><b id="datasetSize">—</b></div>
@@ -130,8 +130,8 @@
       </aside>
 
       <section class="panel ranking-card">
-        <h3><i class="fa-solid fa-list-ol"></i> Top 10 candidates by probability <span>(Logistic Regression)</span></h3>
-        <p class="panel-sub">Scenario Fit appears below each creator but does not overwrite model probability.</p>
+        <h3><i class="fa-solid fa-list-ol"></i> Top 10 candidates by Final Ranking Score <span>(50% Model + 50% Scenario)</span></h3>
+        <p class="panel-sub">Profile / Content / History weights change Scenario Fit, which directly contributes 50% of Final Ranking Score and can re-order candidates.</p>
         <div id="ranking" class="ranking-list"></div>
       </section>
 
@@ -191,6 +191,6 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/static/app.js?v=5feature-v1"></script>
+  <script src="/static/app.js?v=rank61"></script>
 </body>
 </html>

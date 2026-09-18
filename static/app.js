@@ -199,7 +199,7 @@ function renderTop3(){
             <span class="pill-inline">${platformIcon(c.platform)}${escapeHtml(c.platform)}</span>
           </div>
         </div>
-        <div class="prob"><small>Model probability</small><strong>${(c.selection_probability*100).toFixed(1)}%</strong><em>Scenario Fit ${(c.scenario_score*100).toFixed(1)}</em></div>
+        <div class="prob"><small>Final Ranking Score</small><strong>${(c.final_score*100).toFixed(1)}%</strong><em>Model ${(c.selection_probability*100).toFixed(1)} · Scenario ${(c.scenario_score*100).toFixed(1)}</em></div>
       </div>
       <div class="metrics">
         <div class="metric"><strong>${fmtCompact(c.followers)}</strong><span>Followers</span></div>
@@ -219,11 +219,11 @@ function renderRanking(){
         <img class="rank-avatar" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, '${escapeAttr(c.handle)}')">
         <div>
           <div class="rank-handle">${escapeHtml(c.handle)}</div>
-          <div class="rank-sub">${escapeHtml(safeName(c.name,c.handle))} · ${escapeHtml(c.niche)} · ${escapeHtml(c.platform)} <span class="scenario-inline">· Scenario ${(c.scenario_score*100).toFixed(1)}</span></div>
+          <div class="rank-sub">${escapeHtml(safeName(c.name,c.handle))} · ${escapeHtml(c.niche)} · ${escapeHtml(c.platform)} <span class="scenario-inline">· Model ${(c.selection_probability*100).toFixed(1)} · Scenario ${(c.scenario_score*100).toFixed(1)}</span></div>
         </div>
       </div>
-      <div class="bar-bg"><div class="bar" style="width:${Math.max(2,c.selection_probability*100)}%"></div></div>
-      <div class="rank-pct">${(c.selection_probability*100).toFixed(1)}%</div>
+      <div class="bar-bg"><div class="bar" style="width:${Math.max(2,c.final_score*100)}%"></div></div>
+      <div class="rank-pct">${(c.final_score*100).toFixed(1)}%</div>
     </button>`).join('');
 
   document.querySelectorAll('.rank-row').forEach(el=>{
@@ -316,6 +316,7 @@ function renderSelected(){
       </div>
     </div>
     <div class="selected-grid five">
+      <div><b>${(s.final_score*100).toFixed(1)}%</b>Final Ranking Score</div>
       <div><b>${(s.selection_probability*100).toFixed(1)}%</b>Model probability</div>
       <div><b>${(s.scenario_score*100).toFixed(1)}</b>Scenario Fit /100</div>
       <div><b>${s.profile_fit.toFixed(3)}</b>Profile Fit</div>
@@ -325,7 +326,7 @@ function renderSelected(){
       <div><b>${fmtCompact(s.followers)}</b>Followers</div>
       <div><b>${(s.tree_probability*100).toFixed(1)}%</b>Tree leaf probability</div>
     </div>`;
-  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b>. The statistical model uses <b>5 features</b>: Profile Fit, Content Fit, Campaign History Score, Engagement Rate, and log Followers. Scenario Fit uses the business weights above and is displayed separately from Logistic Regression probability. Minimum Followers and Engagement filter candidates after training; Suitable Threshold changes the Tree label; Tree Depth changes Tree complexity. <b>Important:</b> content/history fields and the target are simulated prototype data.`;
+  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b> is based on <b>Final Ranking Score = 50% Model Probability + 50% Scenario Fit</b>. The statistical model uses 5 features: Profile Fit, Content Fit, Campaign History Score, Engagement Rate, and log Followers. Moving Profile / Content changes Scenario Fit (History is the automatic remainder), so the ranking can re-order. Minimum Followers and Engagement filter candidates. Suitable Threshold changes the Tree label and Tree Depth changes Tree complexity; those two controls do not directly change Final Ranking Score. <b>Important:</b> content/history fields and the target are simulated prototype data.`;
 }
 
 function findNode(n,id){ if(n.id===id) return n; if(n.is_leaf) return null; return findNode(n.left,id)||findNode(n.right,id); }

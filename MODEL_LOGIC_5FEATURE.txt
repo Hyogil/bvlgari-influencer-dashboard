@@ -14,12 +14,17 @@ Campaign History Score:
 Model Features:
   [ProfileFit, ContentFit, HistoryScore, EngagementRate, log1p(Followers)]
 
-Scenario Fit (business sensitivity only):
+Scenario Fit (business sensitivity):
   ScenarioFit = w_profile * ProfileFit + w_content * ContentFit + w_history * HistoryScore
   w_history = 1 - w_profile - w_content
 
+Final Ranking Score:
+  FinalScore = 0.50 * LogisticRegressionProbability + 0.50 * ScenarioFit
+
 Primary ranking:
-  Logistic Regression predict_proba using the five model features.
+  Sort descending by FinalScore.
+  Therefore Profile / Content / History slider changes can re-order creators.
+  Logistic Regression coefficients themselves are not overwritten by the business weights.
 
 Decision Tree:
   Same five features; max_depth controlled by Tree Depth slider.
