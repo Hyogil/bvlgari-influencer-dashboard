@@ -2,17 +2,15 @@ const $ = (id) => document.getElementById(id);
 let current = null;
 
 function fmtCompact(n){
+  n = Number(n || 0);
   if(n >= 1_000_000) return (n/1_000_000).toFixed(n>=10_000_000?0:1).replace('.0','')+'M';
   if(n >= 1_000) return (n/1_000).toFixed(n>=100_000?0:1).replace('.0','')+'K';
   return String(Math.round(n));
 }
 function fmtSigned(n, digits=3){ return `${n>=0?'+':''}${Number(n).toFixed(digits)}`; }
-function initials(handle){
-  return handle.replace('@','').split(/[._-]/).slice(0,2).map(x=>x[0]?.toUpperCase()||'').join('').slice(0,2) || 'IN';
-}
 function safeName(name, handle){
   if(!name || name === 'nan') return handle;
-  const odd = (name.match(/[\x80-\x9f]/g)||[]).length;
+  const odd = (String(name).match(/[\x80-\x9f]/g)||[]).length;
   return odd >= 2 ? handle : name;
 }
 function hashCode(text){
@@ -48,30 +46,122 @@ function platformIcon(platform){
   return '<i class="fa-solid fa-user"></i>';
 }
 function showToast(text){
-  const t=$('toast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400);
+  const t=$('toast');
+  if(!t) return;
+  t.textContent=text;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2600);
+}
+function fillSelect(id, values){ $(id).innerHTML = values.map(v=>`<option>${escapeHtml(v)}</option>`).join(''); }
+
+function getControlValues(){
+  return {
+    brand_weight: Number($('brandWeight').value)/100,
+    profile_weight: Number($('profileWeight').value)/100,
+    content_weight: Number($('contentWeight').value)/100,
+    min_followers: Number($('minFollowers').value),
+    min_engagement: Number($('minEngagement').value),
+    suitable_threshold: Number($('suitableThreshold').value)/100,
+    tree_depth: Number($('treeDepth').value),
+  };
+}
+
+function normalizeScenarioWeights(changed){
+  let p=Number($('profileWeight').value);
+  let c=Number($('contentWeight').value);
+  if(p+c>100){
+    if(changed==='profile') c=100-p;
+    else p=100-c;
+    $('profileWeight').value=String(Math.max(0,p));
+    $('contentWeight').value=String(Math.max(0,c));
+  }
+}
+
+function updateControlLabels(){
+  const brand=Number($('brandWeight').value);
+  const profile=Number($('profileWeight').value);
+  const content=Number($('contentWeight').value);
+  const history=Math.max(0,100-profile-content);
+  $('brandWeightLabel').textContent=`${brand}%`;
+  $('campaignWeightLabel').textContent=`${100-brand}%`;
+  $('profileWeightLabel').textContent=`${profile}%`;
+  $('contentWeightLabel').textContent=`${content}%`;
+  $('historyWeightLabel').textContent=`${history}%`;
+  $('minFollowersLabel').textContent=fmtCompact(Number($('minFollowers').value));
+  $('minEngagementLabel').textContent=`${Number($('minEngagement').value).toFixed(1)}%`;
+  $('suitableThresholdLabel').textContent=`${Number($('suitableThreshold').value)}%`;
+  $('treeDepthLabel').textContent=String($('treeDepth').value);
+}
+
+function bindControls(){
+  ['brandWeight','minFollowers','minEngagement','suitableThreshold','treeDepth'].forEach(id=>{
+    $(id).addEventListener('input',updateControlLabels);
+    $(id).addEventListener('change',()=>runAnalysis(null));
+  });
+  $('profileWeight').addEventListener('input',()=>{ normalizeScenarioWeights('profile'); updateControlLabels(); });
+  $('contentWeight').addEventListener('input',()=>{ normalizeScenarioWeights('content'); updateControlLabels(); });
+  $('profileWeight').addEventListener('change',()=>runAnalysis(null));
+  $('contentWeight').addEventListener('change',()=>runAnalysis(null));
 }
 
 async function init(){
   const r = await fetch('/api/options');
   if(!r.ok) throw new Error('Could not load dashboard options.');
   const o = await r.json();
-  fillSelect('brand', o.brands); fillSelect('country', o.countries); fillSelect('campaign', o.campaigns); fillSelect('platform', o.platforms);
-  $('brand').value='BVLGARI'; $('country').value='KR'; $('campaign').value='Luxury / Fashion'; $('platform').value='Instagram';
-  $('runBtn').addEventListener('click',()=>runAnalysis());
+  fillSelect('brand', o.brands);
+  fillSelect('country', o.countries);
+  fillSelect('campaign', o.campaigns);
+  fillSelect('platform', o.platforms);
+  $('brand').value='BVLGARI';
+  $('country').value='KR';
+  $('campaign').value='Luxury / Fashion';
+  $('platform').value='Instagram';
+
+  const d=o.defaults || {};
+  $('brandWeight').value=String(Math.round(Number(d.brand_weight ?? .5)*100));
+  $('profileWeight').value=String(Math.round(Number(d.profile_weight ?? .4)*100));
+  $('contentWeight').value=String(Math.round(Number(d.content_weight ?? .35)*100));
+  $('minFollowers').value=String(Number(d.min_followers ?? 0));
+  $('minEngagement').value=String(Number(d.min_engagement ?? 0));
+  $('suitableThreshold').value=String(Math.round(Number(d.suitable_threshold ?? .5)*100));
+  $('treeDepth').value=String(Number(d.tree_depth ?? 4));
+
+  updateControlLabels();
+  bindControls();
+  $('runBtn').addEventListener('click',()=>runAnalysis(null));
   await runAnalysis();
 }
-function fillSelect(id, values){ $(id).innerHTML = values.map(v=>`<option>${escapeHtml(v)}</option>`).join(''); }
 
 async function runAnalysis(selectedHandle=null){
-  const btn=$('runBtn'); btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Analyzing…';
+  const btn=$('runBtn');
+  btn.disabled=true;
+  btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Analyzing…';
   try{
-    const p = new URLSearchParams({brand:$('brand').value,country:$('country').value,campaign:$('campaign').value,platform:$('platform').value});
+    const c=getControlValues();
+    const p = new URLSearchParams({
+      brand:$('brand').value,
+      country:$('country').value,
+      campaign:$('campaign').value,
+      platform:$('platform').value,
+      brand_weight:String(c.brand_weight),
+      profile_weight:String(c.profile_weight),
+      content_weight:String(c.content_weight),
+      min_followers:String(c.min_followers),
+      min_engagement:String(c.min_engagement),
+      suitable_threshold:String(c.suitable_threshold),
+      tree_depth:String(c.tree_depth),
+    });
     if(selectedHandle) p.set('selected_handle',selectedHandle);
     const r=await fetch('/api/analyze?'+p.toString());
     if(!r.ok) throw new Error((await r.json()).detail || 'Analysis failed');
-    current=await r.json(); renderAll();
-  }catch(e){ showToast(e.message); }
-  finally{ btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-play"></i> Run analysis'; }
+    current=await r.json();
+    renderAll();
+  }catch(e){
+    showToast(e.message);
+  } finally {
+    btn.disabled=false;
+    btn.innerHTML='<i class="fa-solid fa-play"></i> Run analysis';
+  }
 }
 
 function renderAll(){
@@ -80,7 +170,8 @@ function renderAll(){
   $('datasetSize').textContent = current.dataset_size.toLocaleString();
   $('repairedRows').textContent = current.repaired_rows.toLocaleString();
   $('contextLabel').textContent = `${current.context.brand} · ${current.context.country} · ${current.context.platform} · ${current.context.campaign}`;
-  if($('fitMethod')) $('fitMethod').textContent = current.fit_method?.label || '50% Brand + 50% Campaign';
+  $('fitMethod').textContent = `${Math.round(current.context.brand_weight*100)}% Brand + ${Math.round(current.context.campaign_weight*100)}% Campaign`;
+  $('scenarioMethod').textContent = `${Math.round(current.context.profile_weight*100)}% Profile + ${Math.round(current.context.content_weight*100)}% Content + ${Math.round(current.context.history_weight*100)}% History`;
   renderTop3();
   renderRanking();
   renderLogisticExplanation();
@@ -96,8 +187,8 @@ function renderTop3(){
       <div class="rank-pill">Top ${c.rank}</div>
       <div class="creator-main">
         <div class="avatar-wrap">
-          <img class="avatar-photo" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, \'${escapeAttr(c.handle)}\')">
-<span class="platform-dot">${platformIcon(c.platform)}</span>
+          <img class="avatar-photo" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, '${escapeAttr(c.handle)}')">
+          <span class="platform-dot">${platformIcon(c.platform)}</span>
         </div>
         <div class="creator-text">
           <div class="handle">${escapeHtml(c.handle)}</div>
@@ -108,12 +199,12 @@ function renderTop3(){
             <span class="pill-inline">${platformIcon(c.platform)}${escapeHtml(c.platform)}</span>
           </div>
         </div>
-        <div class="prob"><small>Simulated success probability</small><strong>${(c.selection_probability*100).toFixed(1)}%</strong></div>
+        <div class="prob"><small>Model probability</small><strong>${(c.selection_probability*100).toFixed(1)}%</strong><em>Scenario Fit ${(c.scenario_score*100).toFixed(1)}</em></div>
       </div>
       <div class="metrics">
         <div class="metric"><strong>${fmtCompact(c.followers)}</strong><span>Followers</span></div>
         <div class="metric"><strong>${c.engagement_rate.toFixed(1)}%${c.engagement_imputed?'*':''}</strong><span>Engagement${c.engagement_imputed?' (imputed)':''}</span></div>
-        <div class="metric"><strong>${(c.luxury_post_ratio*100).toFixed(1)}%</strong><span>Luxury posts</span></div>
+        <div class="metric"><strong>${(c.content_fit*100).toFixed(1)}</strong><span>Content Fit /100</span></div>
       </div>
     </article>`).join('');
   document.querySelectorAll('.creator-card').forEach(el=>el.addEventListener('click',()=>runAnalysis(el.dataset.handle)));
@@ -125,10 +216,10 @@ function renderRanking(){
     <button type="button" class="rank-row ${c.handle===selectedHandle?'active':''}" data-handle="${escapeAttr(c.handle)}" aria-label="Inspect ${escapeAttr(c.handle)}">
       <div class="rank-num">${i+1}</div>
       <div class="rank-info">
-        <img class="rank-avatar" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, \'${escapeAttr(c.handle)}\')">
+        <img class="rank-avatar" src="${avatarUrl(c.handle,c.platform)}" alt="${escapeAttr(c.handle)} profile" onerror="avatarFallback(this, '${escapeAttr(c.handle)}')">
         <div>
           <div class="rank-handle">${escapeHtml(c.handle)}</div>
-          <div class="rank-sub">${escapeHtml(safeName(c.name,c.handle))} · ${escapeHtml(c.niche)} · ${escapeHtml(c.platform)}</div>
+          <div class="rank-sub">${escapeHtml(safeName(c.name,c.handle))} · ${escapeHtml(c.niche)} · ${escapeHtml(c.platform)} <span class="scenario-inline">· Scenario ${(c.scenario_score*100).toFixed(1)}</span></div>
         </div>
       </div>
       <div class="bar-bg"><div class="bar" style="width:${Math.max(2,c.selection_probability*100)}%"></div></div>
@@ -148,7 +239,6 @@ function renderLogisticExplanation(){
   const e=current.logistic_explanation;
   const s=current.selected;
   $('formulaSelected').textContent=`#${s.rank} ${s.handle}`;
-
   $('featureValues').innerHTML=e.features.map(f=>`
     <div class="mini-row">
       <span>${escapeHtml(f.feature_label)}<div class="subvalue">Z = ${Number(f.standardized).toFixed(3)}</div></span>
@@ -164,7 +254,6 @@ function renderLogisticExplanation(){
       </div>`).join('')}
     <div class="mini-row total"><span>Total z</span><strong>${Number(e.logit).toFixed(3)}</strong></div>
     <div class="mini-row total"><span>Probability</span><strong>${(e.probability*100).toFixed(2)}%</strong></div>`;
-
   renderSigmoid(e.logit,e.probability);
 }
 
@@ -176,18 +265,15 @@ function renderSigmoid(logit, probability){
   const xmin=-6,xmax=6,ymin=0,ymax=1;
   const X=x=>L+(x-xmin)/(xmax-xmin)*(W-L-R);
   const Y=y=>T+(ymax-y)/(ymax-ymin)*(H-T-B);
-
   const line=(x1,y1,x2,y2,stroke='#2d3850',width=1,dash='')=>{
-    const el=document.createElementNS(NS,'line'); el.setAttribute('x1',x1);el.setAttribute('y1',y1);el.setAttribute('x2',x2);el.setAttribute('y2',y2);el.setAttribute('stroke',stroke);el.setAttribute('stroke-width',width); if(dash)el.setAttribute('stroke-dasharray',dash);svg.appendChild(el); return el;
+    const el=document.createElementNS(NS,'line');el.setAttribute('x1',x1);el.setAttribute('y1',y1);el.setAttribute('x2',x2);el.setAttribute('y2',y2);el.setAttribute('stroke',stroke);el.setAttribute('stroke-width',width);if(dash)el.setAttribute('stroke-dasharray',dash);svg.appendChild(el);return el;
   };
   const text=(x,y,value,size=9,fill='#91a0ba',anchor='middle',weight='400')=>{
     const el=document.createElementNS(NS,'text');el.setAttribute('x',x);el.setAttribute('y',y);el.setAttribute('font-size',size);el.setAttribute('fill',fill);el.setAttribute('text-anchor',anchor);el.setAttribute('font-weight',weight);el.textContent=value;svg.appendChild(el);return el;
   };
-
   [0,.25,.5,.75,1].forEach(v=>{line(L,Y(v),W-R,Y(v),'#253045');text(L-6,Y(v)+3,v.toFixed(v===0||v===1?0:2),8,'#8a97ae','end');});
   [-6,-4,-2,0,2,4,6].forEach(v=>{line(X(v),T,X(v),H-B,'#1d2637');text(X(v),H-17,String(v),8);});
-  line(L,T,L,H-B,'#54617a',1.1); line(L,H-B,W-R,H-B,'#54617a',1.1);
-
+  line(L,T,L,H-B,'#54617a',1.1);line(L,H-B,W-R,H-B,'#54617a',1.1);
   let d='';
   for(let i=0;i<=120;i++){
     const x=xmin+(xmax-xmin)*i/120;
@@ -195,7 +281,6 @@ function renderSigmoid(logit, probability){
     d+=(i===0?'M':'L')+`${X(x).toFixed(2)} ${Y(p).toFixed(2)} `;
   }
   const path=document.createElementNS(NS,'path');path.setAttribute('d',d);path.setAttribute('fill','none');path.setAttribute('stroke','#d0a15f');path.setAttribute('stroke-width','3');svg.appendChild(path);
-
   const px=Math.max(xmin,Math.min(xmax,logit));
   line(X(px),Y(probability),X(px),H-B,'#c86f7a',1,'4 3');
   line(L,Y(probability),X(px),Y(probability),'#7d5cff',1,'3 3');
@@ -203,7 +288,7 @@ function renderSigmoid(logit, probability){
   text(X(px),Math.max(12,Y(probability)-11),`z=${Number(logit).toFixed(3)}`,9,'#f1d2a2','middle','700');
   text(W-12,13,`${(probability*100).toFixed(2)}%`,12,'#f1d2a2','end','800');
   text((L+W-R)/2,H-4,'Logit z',9,'#91a0ba');
-  const ylabel=text(10,(T+H-B)/2,'P(Y=1)',9,'#91a0ba'); ylabel.setAttribute('transform',`rotate(-90 10 ${(T+H-B)/2})`);
+  const ylabel=text(10,(T+H-B)/2,'P(Y=1)',9,'#91a0ba');ylabel.setAttribute('transform',`rotate(-90 10 ${(T+H-B)/2})`);
   $('sigmoidCaption').textContent=`Sigmoid(${Number(logit).toFixed(3)}) = ${(probability*100).toFixed(2)}%`;
 }
 
@@ -211,7 +296,7 @@ function renderDecisionPath(){
   const s=current.selected;
   $('decisionPath').innerHTML=s.decision_path.map((p,i)=>`
     <div class="path-step"><span class="path-num">${i+1}</span><div><b>${escapeHtml(p.feature_label)}</b> ${p.operator} ${escapeHtml(p.threshold_label)}<br><span style="color:#a3afc4">Actual: ${escapeHtml(p.actual_label)}</span></div></div>`).join('')+
-    `<div class="result">→ ${escapeHtml(leafLabelForSelected())}</div>`;
+    `<div class="result">→ ${escapeHtml(leafLabelForSelected())} · Tree P ${(s.tree_probability*100).toFixed(1)}% · threshold ${(current.context.suitable_threshold*100).toFixed(0)}%</div>`;
 }
 function leafLabelForSelected(){
   const leaf=findNode(current.tree,current.selected.leaf_id);
@@ -220,22 +305,27 @@ function leafLabelForSelected(){
 
 function renderSelected(){
   const s=current.selected;
+  const status=s.tree_suitable ? '<span class="tree-status good">Suitable</span>' : '<span class="tree-status bad">Not Suitable</span>';
   $('selectedInfo').innerHTML=`
     <div class="selected-head">
-      <img class="selected-avatar" src="${avatarUrl(s.handle,s.platform)}" alt="Profile for ${escapeAttr(s.handle)}" onerror="avatarFallback(this, \'${escapeAttr(s.handle)}\')">
+      <img class="selected-avatar" src="${avatarUrl(s.handle,s.platform)}" alt="Profile for ${escapeAttr(s.handle)}" onerror="avatarFallback(this, '${escapeAttr(s.handle)}')">
       <div>
-        <div class="selected-name">${escapeHtml(s.handle)} ${s.verified?'<span class="verified-chip"><i class="fa-solid fa-badge-check"></i> Verified</span>':''}</div>
+        <div class="selected-name">${escapeHtml(s.handle)} ${status}</div>
         <div class="selected-display-name">${escapeHtml(safeName(s.name,s.handle))}</div>
         <div class="selected-meta">${escapeHtml(s.country)} · ${escapeHtml(s.platform)} · ${escapeHtml(s.niche)}</div>
       </div>
     </div>
-    <div class="selected-grid">
-      <div><b>${(s.selection_probability*100).toFixed(1)}%</b>Enhanced model probability</div>
-      <div><b>${s.brand_fit.toFixed(2)}</b>Brand fit</div>
-      <div><b>${s.engagement_rate.toFixed(1)}%${s.engagement_imputed?'*':''}</b>Engagement${s.engagement_imputed?' (imputed)':''}</div>
+    <div class="selected-grid five">
+      <div><b>${(s.selection_probability*100).toFixed(1)}%</b>Model probability</div>
+      <div><b>${(s.scenario_score*100).toFixed(1)}</b>Scenario Fit /100</div>
+      <div><b>${s.profile_fit.toFixed(3)}</b>Profile Fit</div>
+      <div><b>${s.content_fit.toFixed(3)}</b>Content Fit</div>
+      <div><b>${s.campaign_history_score.toFixed(3)}</b>History Score</div>
+      <div><b>${s.engagement_rate.toFixed(1)}%${s.engagement_imputed?'*':''}</b>Engagement</div>
       <div><b>${fmtCompact(s.followers)}</b>Followers</div>
+      <div><b>${(s.tree_probability*100).toFixed(1)}%</b>Tree leaf probability</div>
     </div>`;
-  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b>. The enhanced model uses <b>8 features</b>: Brand Fit, Engagement, log Followers, Luxury/Jewelry/Fashion post ratios, Past Campaign Count, and Past Campaign Success Rate. Logistic Regression supplies the ranking probability while Decision Tree provides a separate rule-based explanation. <b>Important:</b> the added historical fields and target are simulated prototype data, not observed BVLGARI sales outcomes.`;
+  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b>. The statistical model uses <b>5 features</b>: Profile Fit, Content Fit, Campaign History Score, Engagement Rate, and log Followers. Scenario Fit uses the business weights above and is displayed separately from Logistic Regression probability. Minimum Followers and Engagement filter candidates after training; Suitable Threshold changes the Tree label; Tree Depth changes Tree complexity. <b>Important:</b> content/history fields and the target are simulated prototype data.`;
 }
 
 function findNode(n,id){ if(n.id===id) return n; if(n.is_leaf) return null; return findNode(n.left,id)||findNode(n.right,id); }
@@ -247,7 +337,6 @@ function layoutTree(root){
   const yStart=38;
   const yGap=78;
   let maxDepth=0;
-
   function visit(n,depth,parent=null,branch=''){
     maxDepth=Math.max(maxDepth,depth);
     let x;
@@ -269,40 +358,38 @@ function layoutTree(root){
 }
 
 function renderTree(){
-  const svg=$('treeSvg'); svg.innerHTML='';
+  const svg=$('treeSvg');svg.innerHTML='';
   const NS='http://www.w3.org/2000/svg';
-  const layout=layoutTree(current.tree); const {nodes,edges}=layout;
+  const layout=layoutTree(current.tree);const {nodes,edges}=layout;
   svg.setAttribute('viewBox',`0 0 ${layout.width} ${layout.height}`);
-  svg.removeAttribute('width'); svg.removeAttribute('height');
-  svg.style.width='100%'; svg.style.height='auto';
-  svg.style.aspectRatio=`${layout.width} / ${layout.height}`;
-
+  svg.removeAttribute('width');svg.removeAttribute('height');
+  svg.style.width='100%';svg.style.height='auto';svg.style.aspectRatio=`${layout.width} / ${layout.height}`;
   const byId=new Map(nodes.map(n=>[n.id,n]));
   const pathSet=new Set(current.selected.path_node_ids);
   const nodeHalfW=50,nodeHalfH=20;
 
   edges.forEach(e=>{
-    const a=byId.get(e.from), b=byId.get(e.to);
+    const a=byId.get(e.from),b=byId.get(e.to);
     const selected=pathSet.has(a.id)&&pathSet.has(b.id);
     const line=document.createElementNS(NS,'line');
-    line.setAttribute('x1',a.x); line.setAttribute('y1',a.y+nodeHalfH); line.setAttribute('x2',b.x); line.setAttribute('y2',b.y-nodeHalfH);
-    line.setAttribute('stroke',selected?'#d0a15f':'#536078'); line.setAttribute('stroke-width',selected?'2.8':'1.4'); svg.appendChild(line);
+    line.setAttribute('x1',a.x);line.setAttribute('y1',a.y+nodeHalfH);line.setAttribute('x2',b.x);line.setAttribute('y2',b.y-nodeHalfH);
+    line.setAttribute('stroke',selected?'#d0a15f':'#536078');line.setAttribute('stroke-width',selected?'2.8':'1.4');svg.appendChild(line);
     const label=document.createElementNS(NS,'text');
-    label.setAttribute('x',(a.x+b.x)/2); label.setAttribute('y',(a.y+b.y)/2-4); label.setAttribute('text-anchor','middle');
-    label.setAttribute('font-size','9'); label.setAttribute('font-weight',selected?'700':'500'); label.setAttribute('fill',selected?'#f1d2a2':'#9da8bc'); label.textContent=e.branch; svg.appendChild(label);
+    label.setAttribute('x',(a.x+b.x)/2);label.setAttribute('y',(a.y+b.y)/2-4);label.setAttribute('text-anchor','middle');
+    label.setAttribute('font-size','9');label.setAttribute('font-weight',selected?'700':'500');label.setAttribute('fill',selected?'#f1d2a2':'#9da8bc');label.textContent=e.branch;svg.appendChild(label);
   });
 
   nodes.forEach(n=>{
-    const selected=pathSet.has(n.id); const g=document.createElementNS(NS,'g');
+    const selected=pathSet.has(n.id);const g=document.createElementNS(NS,'g');
     const rect=document.createElementNS(NS,'rect');
-    rect.setAttribute('x',n.x-nodeHalfW); rect.setAttribute('y',n.y-nodeHalfH); rect.setAttribute('width',nodeHalfW*2); rect.setAttribute('height',nodeHalfH*2); rect.setAttribute('rx','8');
-    rect.setAttribute('fill',selected?'#2b1f20':'#111a2a'); rect.setAttribute('stroke',selected?'#d0a15f':'#556178'); rect.setAttribute('stroke-width',selected?'2.2':'1.05'); g.appendChild(rect);
+    rect.setAttribute('x',n.x-nodeHalfW);rect.setAttribute('y',n.y-nodeHalfH);rect.setAttribute('width',nodeHalfW*2);rect.setAttribute('height',nodeHalfH*2);rect.setAttribute('rx','8');
+    rect.setAttribute('fill',selected?'#2b1f20':'#111a2a');rect.setAttribute('stroke',selected?'#d0a15f':'#556178');rect.setAttribute('stroke-width',selected?'2.2':'1.05');g.appendChild(rect);
     const t=document.createElementNS(NS,'text');
-    t.setAttribute('x',n.x); t.setAttribute('y',n.y-6); t.setAttribute('text-anchor','middle'); t.setAttribute('font-size','8.3');
-    t.setAttribute('font-weight',selected?'700':'600'); t.setAttribute('fill',selected?'#fff0d1':'#dfe6f5');
+    t.setAttribute('x',n.x);t.setAttribute('y',n.y-6);t.setAttribute('text-anchor','middle');t.setAttribute('font-size','8.3');
+    t.setAttribute('font-weight',selected?'700':'600');t.setAttribute('fill',selected?'#fff0d1':'#dfe6f5');
     const lines=n.is_leaf?[n.label,`P=${Math.round(n.positive_probability*100)}% · n=${n.samples}`]:[n.feature_label,`≤ ${n.threshold_label}? · n=${n.samples}`];
-    lines.forEach((txt,i)=>{ const sp=document.createElementNS(NS,'tspan'); sp.setAttribute('x',n.x); sp.setAttribute('dy',i===0?'0':'12'); sp.textContent=txt; t.appendChild(sp); });
-    g.appendChild(t); svg.appendChild(g);
+    lines.forEach((txt,i)=>{const sp=document.createElementNS(NS,'tspan');sp.setAttribute('x',n.x);sp.setAttribute('dy',i===0?'0':'12');sp.textContent=txt;t.appendChild(sp);});
+    g.appendChild(t);svg.appendChild(g);
   });
 }
 

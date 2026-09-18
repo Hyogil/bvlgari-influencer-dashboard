@@ -7,14 +7,14 @@
   <title>BVLGARI Influencer Selection Dashboard</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" />
-  <link rel="stylesheet" href="/static/style.css?v=8feature" />
+  <link rel="stylesheet" href="/static/style.css?v=5feature-v1" />
 </head>
 <body>
   <header class="brand-header">
     <div>
       <div class="brand-mark">BVLGARI</div>
       <h1>Influencer Selection Dashboard</h1>
-      <p>Enhanced 8-feature campaign screening model · Logistic Regression + Decision Tree</p>
+      <p>5-feature model · Profile Fit + Content Fit + Campaign History + Engagement + Reach</p>
     </div>
     <div class="model-badge"><i class="fa-solid fa-flask"></i> Simulated historical outcome prototype</div>
   </header>
@@ -30,10 +30,66 @@
       </div>
     </section>
 
+    <section class="panel scenario-panel">
+      <div class="control-group business-controls">
+        <div class="control-group-head">
+          <div><b>Business assumption controls</b><span>Profile definition and Scenario Fit weighting</span></div>
+          <div class="control-hint">Scenario weights do not replace Logistic β coefficients.</div>
+        </div>
+        <div class="slider-grid business-slider-grid">
+          <div class="slider-card wide">
+            <div class="slider-title"><span>1. Brand ↔ Campaign</span><b><span id="brandWeightLabel">50%</span> / <span id="campaignWeightLabel">50%</span></b></div>
+            <input id="brandWeight" type="range" min="0" max="100" step="5" value="50" />
+            <div class="range-ends"><span>Brand identity</span><span>Campaign relevance</span></div>
+          </div>
+          <div class="slider-card">
+            <div class="slider-title"><span>2. Profile Fit Weight</span><b id="profileWeightLabel">40%</b></div>
+            <input id="profileWeight" type="range" min="0" max="100" step="5" value="40" />
+          </div>
+          <div class="slider-card">
+            <div class="slider-title"><span>3. Content Fit Weight</span><b id="contentWeightLabel">35%</b></div>
+            <input id="contentWeight" type="range" min="0" max="100" step="5" value="35" />
+          </div>
+          <div class="slider-card auto-card">
+            <div class="slider-title"><span>Campaign History Weight</span><b id="historyWeightLabel">25%</b></div>
+            <div class="auto-weight"><i class="fa-solid fa-lock"></i> Auto remainder to 100%</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group filter-controls">
+        <div class="control-group-head"><div><b>Candidate filters</b><span>Applied after the country cohort is trained</span></div></div>
+        <div class="slider-grid filter-slider-grid">
+          <div class="slider-card">
+            <div class="slider-title"><span>4. Minimum Followers</span><b id="minFollowersLabel">0</b></div>
+            <input id="minFollowers" type="range" min="0" max="10000000" step="100000" value="0" />
+          </div>
+          <div class="slider-card">
+            <div class="slider-title"><span>5. Minimum Engagement</span><b id="minEngagementLabel">0.0%</b></div>
+            <input id="minEngagement" type="range" min="0" max="20" step="0.5" value="0" />
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group model-controls">
+        <div class="control-group-head"><div><b>Model controls</b><span>Decision threshold and tree complexity</span></div></div>
+        <div class="slider-grid model-slider-grid">
+          <div class="slider-card">
+            <div class="slider-title"><span>6. Suitable Threshold</span><b id="suitableThresholdLabel">50%</b></div>
+            <input id="suitableThreshold" type="range" min="30" max="90" step="5" value="50" />
+          </div>
+          <div class="slider-card">
+            <div class="slider-title"><span>7. Tree Depth</span><b id="treeDepthLabel">4</b></div>
+            <input id="treeDepth" type="range" min="2" max="6" step="1" value="4" />
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="section-head">
       <div>
         <h2><i class="fa-solid fa-ranking-star"></i> Top 3 recommended influencers</h2>
-        <p>Ranked by Logistic Regression probability using the enhanced 8-feature model.</p>
+        <p>Primary ranking = Logistic Regression probability. Scenario Fit is shown separately as a business sensitivity score.</p>
       </div>
       <div id="contextLabel" class="context-chip">—</div>
     </section>
@@ -42,23 +98,29 @@
     <section class="dashboard-grid">
       <aside class="panel model-summary">
         <h3><i class="fa-solid fa-table-list"></i> Model summary</h3>
-        <div class="model-line"><span class="num-dot">1</span><div><b>Logistic Regression</b><small>Ranks creators by simulated campaign-success probability.</small></div></div>
-        <div class="model-line"><span class="num-dot">2</span><div><b>Decision Tree</b><small>Explains rule path and leaf-level probability.</small></div></div>
+        <div class="model-line"><span class="num-dot">1</span><div><b>Logistic Regression</b><small>Ranks creators using five interpretable model features.</small></div></div>
+        <div class="model-line"><span class="num-dot">2</span><div><b>Decision Tree</b><small>Provides an independent rule path and leaf probability.</small></div></div>
         <div class="divider"></div>
         <div class="summary-stat"><span>Dataset</span><b id="datasetSize">—</b></div>
         <div class="summary-stat"><span>Training cohort</span><b id="trainingSize">—</b></div>
         <div class="summary-stat"><span>Candidate set</span><b id="sampleSize">—</b></div>
         <div class="summary-stat"><span>Repaired rows</span><b id="repairedRows">—</b></div>
-        <div class="summary-stat"><span>Brand Fit rule</span><b id="fitMethod">50% Brand + 50% Campaign</b></div>
+        <div class="summary-stat"><span>Profile Fit rule</span><b id="fitMethod">—</b></div>
+        <div class="summary-stat"><span>Scenario weights</span><b id="scenarioMethod">—</b></div>
+        <div class="note formula-note">
+          <b>Sub-score definitions</b><br>
+          Content Fit = 50% Luxury + 30% Jewelry + 20% Fashion<br>
+          History = 30% Experience + 70% Past Success Rate
+        </div>
         <div class="note warning">
           <b><i class="fa-solid fa-triangle-exclamation"></i> Academic note</b>
-          Added historical-content and outcome fields are simulated prototype data, not observed BVLGARI sales/ROAS history.
+          Added content/history fields and target are simulated prototype data, not observed BVLGARI sales/ROAS history.
         </div>
       </aside>
 
       <section class="panel ranking-card">
         <h3><i class="fa-solid fa-list-ol"></i> Top 10 candidates by probability <span>(Logistic Regression)</span></h3>
-        <p class="panel-sub">Click a candidate to update the formula, sigmoid point, and Decision Tree path.</p>
+        <p class="panel-sub">Scenario Fit appears below each creator but does not overwrite model probability.</p>
         <div id="ranking" class="ranking-list"></div>
       </section>
 
@@ -69,7 +131,7 @@
         </div>
         <div class="formula-top">
           <div class="formula-box"><span class="step-dot">1</span><div><small>Logistic function</small><strong>P(Y=1) = 1 / (1 + e<sup>−z</sup>)</strong></div></div>
-          <div class="formula-box"><span class="step-dot">2</span><div><small>Standardized logit</small><strong>z = β₀ + Σ βⱼZⱼ</strong><small>Z = (X − μ) / σ</small></div></div>
+          <div class="formula-box"><span class="step-dot">2</span><div><small>Standardized logit</small><strong>z = β₀ + Σ βⱼZⱼ</strong><small>5 model features · Z = (X − μ) / σ</small></div></div>
         </div>
         <div class="formula-body">
           <div>
@@ -93,7 +155,7 @@
       <div class="section-head compact">
         <div>
           <h2><i class="fa-solid fa-code-branch"></i> Decision Tree for influencer selection</h2>
-          <p>Full tree fitted to the current training cohort; selected creator path is highlighted.</p>
+          <p>Tree depth and Suitable threshold are controlled above. Selected creator path is highlighted.</p>
         </div>
         <div class="legend"><span class="swatch selected"></span> Selected path <span class="swatch"></span> Other node</div>
       </div>
@@ -118,6 +180,6 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/static/app.js?v=8feature"></script>
+  <script src="/static/app.js?v=5feature-v1"></script>
 </body>
 </html>
