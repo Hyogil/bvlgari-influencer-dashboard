@@ -7,14 +7,14 @@
   <title>BVLGARI Influencer Selection Dashboard</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" />
-  <link rel="stylesheet" href="/static/style.css?v=model70" />
+  <link rel="stylesheet" href="/static/style.css?v=campaign90" />
 </head>
 <body>
   <header class="brand-header">
     <div>
       <div class="brand-mark">BVLGARI</div>
       <h1>Influencer Selection Dashboard</h1>
-      <p>9-feature direct Logistic Regression · no manually weighted composite scores</p>
+      <p>Campaign-conditioned Logistic Regression · direct content features · no heuristic fit scores</p>
     </div>
     <div class="model-badge"><i class="fa-solid fa-flask"></i> Simulated historical outcome prototype</div>
   </header>
@@ -22,7 +22,6 @@
   <main class="shell">
     <section class="panel control-panel">
       <div class="controls">
-        <label><span><i class="fa-solid fa-gem"></i> Brand</span><select id="brand"></select></label>
         <label><span><i class="fa-solid fa-earth-asia"></i> Country</span><select id="country"></select></label>
         <label><span><i class="fa-solid fa-hashtag"></i> Platform</span><select id="platform"></select></label>
         <label><span><i class="fa-solid fa-bullseye"></i> Campaign</span><select id="campaign"></select></label>
@@ -36,7 +35,7 @@
           <b>Model &amp; Filter Controls</b>
           <span>Candidate filters · Decision Tree controls</span>
         </div>
-        <div class="control-strip-note">Ranking = Logistic Regression probability only</div>
+        <div class="control-strip-note">Ranking = selected-campaign Logistic Regression probability</div>
       </div>
 
       <div class="compact-controls-grid">
@@ -73,7 +72,7 @@
     <section class="section-head">
       <div>
         <h2><i class="fa-solid fa-ranking-star"></i> Top 3 recommended influencers</h2>
-        <p>Ranking is based solely on Logistic Regression predicted probability. No Scenario Score is blended into the final ranking.</p>
+        <p>Selecting a campaign changes the direct content-ratio feature(s) used by Logistic Regression; ranking is then based solely on that campaign-conditioned predicted probability.</p>
       </div>
       <div id="contextLabel" class="context-chip">—</div>
     </section>
@@ -82,7 +81,7 @@
     <section class="dashboard-grid">
       <aside class="panel model-summary">
         <h3><i class="fa-solid fa-table-list"></i> Model summary</h3>
-        <div class="model-line"><span class="num-dot">1</span><div><b>Logistic Regression</b><small>Produces Model Probability from nine direct features with learned coefficients.</small></div></div>
+        <div class="model-line"><span class="num-dot">1</span><div><b>Logistic Regression</b><small>Produces campaign-conditioned probability from direct content evidence, campaign history, engagement, and reach.</small></div></div>
         <div class="model-line"><span class="num-dot">2</span><div><b>Decision Tree</b><small>Provides an independent rule path and leaf probability.</small></div></div>
         <div class="divider"></div>
         <div class="summary-stat"><span>Dataset</span><b id="datasetSize">—</b></div>
@@ -91,10 +90,11 @@
         <div class="summary-stat"><span>Repaired rows</span><b id="repairedRows">—</b></div>
         <div class="summary-stat"><span>Feature design</span><b id="fitMethod">—</b></div>
         <div class="note formula-note">
-          <b>No manual composite weighting</b><br>
-          Brand Score and Campaign Score enter separately.<br>
-          Luxury, Jewelry, Fashion, Campaign Count, and Past Success also enter separately.<br>
-          Standardized Logistic Regression coefficients determine their model contribution.
+          <b>No manual content weighting</b><br>
+          The Campaign selector chooses the directly relevant post-ratio feature(s).<br>
+          Campaign Count, Past Success, Engagement, and log Followers enter directly.<br>
+          Logistic Regression learns the standardized coefficients. No Scenario Score is used.<br>
+          <span id="campaignFeatureNote"></span>
         </div>
         <div class="note warning">
           <b><i class="fa-solid fa-triangle-exclamation"></i> Academic note</b>
@@ -103,8 +103,8 @@
       </aside>
 
       <section class="panel ranking-card">
-        <h3><i class="fa-solid fa-list-ol"></i> Top 10 candidates by Logistic Regression Probability</h3>
-        <p class="panel-sub">Candidates are ranked only by the predicted probability from the 9-feature Logistic Regression model.</p>
+        <h3><i class="fa-solid fa-list-ol"></i> Top 10 candidates by Campaign-Conditioned Logistic Probability</h3>
+        <p class="panel-sub">Candidates are ranked only by the selected campaign's Logistic Regression predicted probability.</p>
         <div id="ranking" class="ranking-list"></div>
       </section>
 
@@ -115,7 +115,7 @@
         </div>
         <div class="formula-top">
           <div class="formula-box"><span class="step-dot">1</span><div><small>Logistic function</small><strong>P(Y=1) = 1 / (1 + e<sup>−z</sup>)</strong></div></div>
-          <div class="formula-box"><span class="step-dot">2</span><div><small>Standardized logit</small><strong>z = β₀ + Σ βⱼZⱼ</strong><small>9 model features · Z = (X − μ) / σ</small></div></div>
+          <div class="formula-box"><span class="step-dot">2</span><div><small>Standardized logit</small><strong>z = β₀ + Σ βⱼZⱼ</strong><small><span id="featureCountText">Campaign-specific features · Z = (X − μ) / σ</span></small></div></div>
         </div>
         <div class="formula-body">
           <div>
@@ -164,6 +164,6 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/static/app.js?v=model70"></script>
+  <script src="/static/app.js?v=campaign90"></script>
 </body>
 </html>

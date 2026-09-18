@@ -82,14 +82,12 @@ async function init(){
   const r = await fetch('/api/options');
   if(!r.ok) throw new Error('Could not load dashboard options.');
   const o = await r.json();
-  fillSelect('brand', o.brands);
   fillSelect('country', o.countries);
-  fillSelect('campaign', o.campaigns);
   fillSelect('platform', o.platforms);
-  $('brand').value='BVLGARI';
+  fillSelect('campaign', o.campaigns);
   $('country').value='KR';
-  $('campaign').value='Luxury / Fashion';
   $('platform').value='Instagram';
+  $('campaign').value=o.default_campaign || 'Luxury / Fashion';
 
   const d=o.defaults || {};
   $('minFollowers').value=String(Number(d.min_followers ?? 0));
@@ -110,10 +108,9 @@ async function runAnalysis(selectedHandle=null){
   try{
     const c=getControlValues();
     const p = new URLSearchParams({
-      brand:$('brand').value,
       country:$('country').value,
-      campaign:$('campaign').value,
       platform:$('platform').value,
+      campaign:$('campaign').value,
       min_followers:String(c.min_followers),
       min_engagement:String(c.min_engagement),
       suitable_threshold:String(c.suitable_threshold),
@@ -137,14 +134,22 @@ function renderAll(){
   $('trainingSize').textContent = current.training_size.toLocaleString();
   $('datasetSize').textContent = current.dataset_size.toLocaleString();
   $('repairedRows').textContent = current.repaired_rows.toLocaleString();
-  $('contextLabel').textContent = `${current.context.brand} · ${current.context.country} · ${current.context.platform} · ${current.context.campaign}`;
-  $('fitMethod').textContent = current.fit_method?.label || '9-feature direct model';
+  $('contextLabel').textContent = `${current.context.country} · ${current.context.platform} · ${current.context.campaign}`;
+  $('fitMethod').textContent = current.fit_method?.label || 'Campaign-conditioned model';
+  if($('featureCountText')) $('featureCountText').textContent = `${current.logistic_explanation.feature_count} model features · Z = (X − μ) / σ`;
+  if($('campaignFeatureNote')) $('campaignFeatureNote').textContent = `Selected campaign: ${current.context.campaign} · direct content feature(s): ${(current.fit_method?.campaign_content_features || []).join(', ')}`;
   renderTop3();
   renderRanking();
   renderLogisticExplanation();
   renderDecisionPath();
   renderSelected();
   renderTree();
+}
+
+function campaignContentText(c){
+  const items=Array.isArray(c.campaign_content)?c.campaign_content:[];
+  if(!items.length) return '—';
+  return items.map(x=>`${x.label.replace(' Post Ratio','').replace(' / Apparel','')} ${(Number(x.ratio)*100).toFixed(0)}%`).join(' · ');
 }
 
 function renderTop3(){
@@ -171,7 +176,7 @@ function renderTop3(){
       <div class="metrics">
         <div class="metric"><strong>${fmtCompact(c.followers)}</strong><span>Followers</span></div>
         <div class="metric"><strong>${c.engagement_rate.toFixed(1)}%${c.engagement_imputed?'*':''}</strong><span>Engagement${c.engagement_imputed?' (imputed)':''}</span></div>
-        <div class="metric"><strong>${(c.past_campaign_success_rate*100).toFixed(1)}%</strong><span>Past Campaign Success</span></div>
+        <div class="metric"><strong>${escapeHtml(campaignContentText(c))}</strong><span>${escapeHtml(current.context.campaign)} Content Match</span></div>
       </div>
     </article>`).join('');
   document.querySelectorAll('.creator-card').forEach(el=>el.addEventListener('click',()=>runAnalysis(el.dataset.handle)));
@@ -273,6 +278,7 @@ function leafLabelForSelected(){
 function renderSelected(){
   const s=current.selected;
   const status=s.tree_suitable ? '<span class="tree-status good">Suitable</span>' : '<span class="tree-status bad">Not Suitable</span>';
+  const campaignMetrics=(s.campaign_content || []).map(x=>`<div><b>${(Number(x.ratio)*100).toFixed(1)}%</b>${escapeHtml(x.label)}</div>`).join('');
   $('selectedInfo').innerHTML=`
     <div class="selected-head">
       <img class="selected-avatar" src="${avatarUrl(s.handle,s.platform)}" alt="Profile for ${escapeAttr(s.handle)}" onerror="avatarFallback(this, '${escapeAttr(s.handle)}')">
@@ -283,19 +289,16 @@ function renderSelected(){
       </div>
     </div>
     <div class="selected-grid five">
-      <div class="wide-metric"><b>${(s.selection_probability*100).toFixed(1)}%</b>Predicted Success Probability</div>
-      <div><b>${s.brand_score.toFixed(3)}</b>Brand Score</div>
-      <div><b>${s.campaign_score.toFixed(3)}</b>Campaign Score</div>
-      <div><b>${(s.luxury_post_ratio*100).toFixed(1)}%</b>Luxury Post Ratio</div>
-      <div><b>${(s.jewelry_post_ratio*100).toFixed(1)}%</b>Jewelry Post Ratio</div>
-      <div><b>${(s.fashion_post_ratio*100).toFixed(1)}%</b>Fashion / Apparel Ratio</div>
+      <div class="wide-metric"><b>${(s.selection_probability*100).toFixed(1)}%</b>${escapeHtml(s.campaign)} Predicted Success Probability</div>
+      ${campaignMetrics}
       <div><b>${s.past_campaign_count}</b>Past Campaign Count</div>
       <div><b>${(s.past_campaign_success_rate*100).toFixed(1)}%</b>Past Campaign Success</div>
       <div><b>${s.engagement_rate.toFixed(1)}%${s.engagement_imputed?'*':''}</b>Engagement</div>
       <div><b>${fmtCompact(s.followers)}</b>Followers</div>
       <div><b>${(s.tree_probability*100).toFixed(1)}%</b>Tree leaf probability</div>
     </div>`;
-  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b> is determined solely by the <b>9-feature Logistic Regression predicted probability</b>. Brand Score, Campaign Score, Luxury/Jewelry/Fashion ratios, Past Campaign Count, Past Campaign Success Rate, Engagement, and log Followers enter the model separately. There is <b>no manually weighted Content Fit, History Score, Profile Fit, or Scenario Score</b>. Minimum Followers and Engagement filter candidates. Suitable Threshold changes the Tree label and Tree Depth changes Tree complexity; those Decision Tree controls do not directly change the Logistic Regression ranking. <b>Important:</b> content/history fields and the target are simulated prototype data.`;
+  const directFeatures=(current.fit_method?.campaign_content_features || []).join(', ');
+  $('takeaway').innerHTML=`Rank <b>#${s.rank}</b> is based only on the <b>${escapeHtml(current.context.campaign)}-conditioned Logistic Regression probability</b>. Selecting a campaign changes the direct content-ratio feature(s) used by the model: <b>${escapeHtml(directFeatures)}</b>. Campaign history, Engagement, and log Followers remain direct features. There is <b>no manual fit score, no fixed content weighting, and no Scenario Score</b>. Minimum Followers and Engagement filter candidates. Suitable Threshold and Tree Depth affect only the Decision Tree explanation. <b>Important:</b> the content/history fields and target are simulated prototype data, so this is a campaign-conditioned prototype rather than validated BVLGARI outcome prediction.`;
 }
 
 function findNode(n,id){ if(n.id===id) return n; if(n.is_leaf) return null; return findNode(n.left,id)||findNode(n.right,id); }
