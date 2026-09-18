@@ -134,21 +134,26 @@ BRAND_PROFILES: Dict[str, Dict[str, float]] = {
 }
 
 CAMPAIGN_PROFILES: Dict[str, Dict[str, float]] = {
+    # Campaign Fit is deliberately different from Brand Fit.
+    # Brand Fit represents long-term affinity with the selected brand, while
+    # Campaign Fit represents short-term activation suitability for the campaign.
+    # These are business heuristic assumptions on the same 5-level ordinal scale;
+    # they are NOT learned Logistic Regression coefficients.
     "Luxury / Fashion": {
         "fashion": 1.00,
         "fashion_&_style": 1.00,
-        "beauty": 0.75,
-        "lifestyle": 0.50,
-        "travel": 0.25,
-        "music": 0.25,
-        "fitness": 0.00,
-        "food": 0.00,
+        "lifestyle": 0.75,
+        "beauty": 0.50,
+        "travel": 0.50,
+        "music": 0.50,
+        "fitness": 0.25,
+        "comedy": 0.25,
+        "food": 0.25,
         "business": 0.00,
         "tech": 0.00,
         "gaming": 0.00,
         "education": 0.00,
         "finance": 0.00,
-        "comedy": 0.00,
     },
     "Jewelry": {
         "fashion": 1.00,
