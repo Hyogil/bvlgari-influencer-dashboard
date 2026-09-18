@@ -1,0 +1,2 @@
+# Add this line to the project's existing requirements.txt
+openpyxl>=3.1,<4
