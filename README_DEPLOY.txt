@@ -56,3 +56,10 @@ Start Command:
   uvicorn app:app --host 0.0.0.0 --port $PORT
 
 After replacing the files in GitHub, use Render -> Manual Deploy -> Clear build cache & deploy.
+
+UI UPDATE - COMPACT 8 CONTROL STRIP
+- Desktop/presentation width >=1450px: all 8 control cards are displayed in one horizontal row.
+- 821-1449px: responsive 4 x 2 layout.
+- <=820px: responsive 2-column mobile layout.
+- Controls preserved: Brand/Campaign, Profile Fit, Content Fit, Campaign History (auto), Min Followers, Min Engagement, Threshold, Tree Depth.
+- No model/API logic was changed; this update is UI/layout only.

@@ -7,7 +7,7 @@
   <title>BVLGARI Influencer Selection Dashboard</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" />
-  <link rel="stylesheet" href="/static/style.css?v=5feature-v1" />
+  <link rel="stylesheet" href="/static/style.css?v=5feature-compact8-v1" />
 </head>
 <body>
   <header class="brand-header">
@@ -30,58 +30,69 @@
       </div>
     </section>
 
-    <section class="panel scenario-panel">
-      <div class="control-group business-controls">
-        <div class="control-group-head">
-          <div><b>Business assumption controls</b><span>Profile definition and Scenario Fit weighting</span></div>
-          <div class="control-hint">Scenario weights do not replace Logistic β coefficients.</div>
+    <section class="panel scenario-panel compact-scenario-panel">
+      <div class="controls-strip-head">
+        <div>
+          <b>Scenario &amp; Model Controls</b>
+          <span>Business assumptions · candidate filters · model controls</span>
         </div>
-        <div class="slider-grid business-slider-grid">
-          <div class="slider-card wide">
-            <div class="slider-title"><span>1. Brand ↔ Campaign</span><b><span id="brandWeightLabel">50%</span> / <span id="campaignWeightLabel">50%</span></b></div>
-            <input id="brandWeight" type="range" min="0" max="100" step="5" value="50" />
-            <div class="range-ends"><span>Brand identity</span><span>Campaign relevance</span></div>
-          </div>
-          <div class="slider-card">
-            <div class="slider-title"><span>2. Profile Fit Weight</span><b id="profileWeightLabel">40%</b></div>
-            <input id="profileWeight" type="range" min="0" max="100" step="5" value="40" />
-          </div>
-          <div class="slider-card">
-            <div class="slider-title"><span>3. Content Fit Weight</span><b id="contentWeightLabel">35%</b></div>
-            <input id="contentWeight" type="range" min="0" max="100" step="5" value="35" />
-          </div>
-          <div class="slider-card auto-card">
-            <div class="slider-title"><span>Campaign History Weight</span><b id="historyWeightLabel">25%</b></div>
-            <div class="auto-weight"><i class="fa-solid fa-lock"></i> Auto remainder to 100%</div>
-          </div>
-        </div>
+        <div class="control-strip-note">History = auto remainder · Scenario weights do not replace Logistic β</div>
       </div>
 
-      <div class="control-group filter-controls">
-        <div class="control-group-head"><div><b>Candidate filters</b><span>Applied after the country cohort is trained</span></div></div>
-        <div class="slider-grid filter-slider-grid">
-          <div class="slider-card">
-            <div class="slider-title"><span>4. Minimum Followers</span><b id="minFollowersLabel">0</b></div>
-            <input id="minFollowers" type="range" min="0" max="10000000" step="100000" value="0" />
-          </div>
-          <div class="slider-card">
-            <div class="slider-title"><span>5. Minimum Engagement</span><b id="minEngagementLabel">0.0%</b></div>
-            <input id="minEngagement" type="range" min="0" max="20" step="0.5" value="0" />
-          </div>
+      <div class="compact-controls-grid">
+        <div class="slider-card compact-control business-control brand-campaign-control">
+          <div class="control-eyebrow">BUSINESS</div>
+          <div class="slider-title"><span>Brand ↔ Campaign</span><b><span id="brandWeightLabel">50%</span> / <span id="campaignWeightLabel">50%</span></b></div>
+          <input id="brandWeight" type="range" min="0" max="100" step="5" value="50" />
+          <div class="range-ends"><span>Brand</span><span>Campaign</span></div>
         </div>
-      </div>
 
-      <div class="control-group model-controls">
-        <div class="control-group-head"><div><b>Model controls</b><span>Decision threshold and tree complexity</span></div></div>
-        <div class="slider-grid model-slider-grid">
-          <div class="slider-card">
-            <div class="slider-title"><span>6. Suitable Threshold</span><b id="suitableThresholdLabel">50%</b></div>
-            <input id="suitableThreshold" type="range" min="30" max="90" step="5" value="50" />
-          </div>
-          <div class="slider-card">
-            <div class="slider-title"><span>7. Tree Depth</span><b id="treeDepthLabel">4</b></div>
-            <input id="treeDepth" type="range" min="2" max="6" step="1" value="4" />
-          </div>
+        <div class="slider-card compact-control business-control">
+          <div class="control-eyebrow">BUSINESS</div>
+          <div class="slider-title"><span>Profile Fit</span><b id="profileWeightLabel">40%</b></div>
+          <input id="profileWeight" type="range" min="0" max="100" step="5" value="40" />
+          <div class="range-ends"><span>Low</span><span>High</span></div>
+        </div>
+
+        <div class="slider-card compact-control business-control">
+          <div class="control-eyebrow">BUSINESS</div>
+          <div class="slider-title"><span>Content Fit</span><b id="contentWeightLabel">35%</b></div>
+          <input id="contentWeight" type="range" min="0" max="100" step="5" value="35" />
+          <div class="range-ends"><span>Low</span><span>High</span></div>
+        </div>
+
+        <div class="slider-card compact-control auto-card business-control history-control">
+          <div class="control-eyebrow">BUSINESS</div>
+          <div class="slider-title"><span>Campaign History</span><b id="historyWeightLabel">25%</b></div>
+          <div class="auto-weight compact-auto"><i class="fa-solid fa-lock"></i> Auto to 100%</div>
+        </div>
+
+        <div class="slider-card compact-control filter-control">
+          <div class="control-eyebrow">FILTER</div>
+          <div class="slider-title"><span>Min Followers</span><b id="minFollowersLabel">0</b></div>
+          <input id="minFollowers" type="range" min="0" max="10000000" step="100000" value="0" />
+          <div class="range-ends"><span>0</span><span>10M</span></div>
+        </div>
+
+        <div class="slider-card compact-control filter-control">
+          <div class="control-eyebrow">FILTER</div>
+          <div class="slider-title"><span>Min Engagement</span><b id="minEngagementLabel">0.0%</b></div>
+          <input id="minEngagement" type="range" min="0" max="20" step="0.5" value="0" />
+          <div class="range-ends"><span>0%</span><span>20%</span></div>
+        </div>
+
+        <div class="slider-card compact-control model-control">
+          <div class="control-eyebrow">MODEL</div>
+          <div class="slider-title"><span>Threshold</span><b id="suitableThresholdLabel">50%</b></div>
+          <input id="suitableThreshold" type="range" min="30" max="90" step="5" value="50" />
+          <div class="range-ends"><span>30%</span><span>90%</span></div>
+        </div>
+
+        <div class="slider-card compact-control model-control">
+          <div class="control-eyebrow">MODEL</div>
+          <div class="slider-title"><span>Tree Depth</span><b id="treeDepthLabel">4</b></div>
+          <input id="treeDepth" type="range" min="2" max="6" step="1" value="4" />
+          <div class="range-ends"><span>2</span><span>6</span></div>
         </div>
       </div>
     </section>
