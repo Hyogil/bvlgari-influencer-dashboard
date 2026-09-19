@@ -10,9 +10,9 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier, export_text
+from sklearn.tree import DecisionTreeClassifier, _tree
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, brier_score_loss, confusion_matrix
-from sklearn.model_selection import StratifiedKFold, cross_validate
+from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
 BASE=Path(__file__).resolve().parent; DATA=BASE/'data'; DATA.mkdir(exist_ok=True)
 TARGET='simulated_campaign_success_target'
@@ -66,19 +66,93 @@ def evaluate(model,df):
     return {'accuracy':safe_float(accuracy_score(y,pred)),'precision':safe_float(precision_score(y,pred,zero_division=0)),'recall':safe_float(recall_score(y,pred,zero_division=0)),'f1':safe_float(f1_score(y,pred,zero_division=0)),'auc':safe_float(roc_auc_score(y,p)) if len(np.unique(y))>1 else None,'brier':safe_float(brier_score_loss(y,p)),'confusion':{'tn':int(tn),'fp':int(fp),'fn':int(fn),'tp':int(tp)},'n':int(len(y))}
 
 def cv_metrics(models,X,y):
-    cv=StratifiedKFold(n_splits=5,shuffle=True,random_state=42); out={}
+    """5-fold stratified out-of-fold evaluation.
+
+    Every displayed classification metric is calculated from the SAME pooled
+    out-of-fold predictions, so Precision/Recall/F1/Accuracy reconcile exactly
+    with the training confusion matrix. ROC-AUC and Brier use the corresponding
+    out-of-fold success probabilities.
+    """
+    cv=StratifiedKFold(n_splits=5,shuffle=True,random_state=42)
+    out={}
     for name,m in models.items():
-        r=cross_validate(m,X,y,cv=cv,scoring={'accuracy':'accuracy','precision':'precision','recall':'recall','f1':'f1','auc':'roc_auc','brier':'neg_brier_score'},error_score='raise')
-        out[name]={k:float(np.mean(r['test_'+k])) for k in ['accuracy','precision','recall','f1','auc']}; out[name]['brier']=float(-np.mean(r['test_brier']))
+        # Each row is predicted only by a model that was trained on the other 4 folds.
+        p=cross_val_predict(m,X,y,cv=cv,method='predict_proba')[:,1]
+        pred=(p>=0.5).astype(int)
+        tn,fp,fn,tp=confusion_matrix(y,pred,labels=[0,1]).ravel()
+        out[name]={
+            'accuracy':safe_float(accuracy_score(y,pred)),
+            'precision':safe_float(precision_score(y,pred,zero_division=0)),
+            'recall':safe_float(recall_score(y,pred,zero_division=0)),
+            'f1':safe_float(f1_score(y,pred,zero_division=0)),
+            'auc':safe_float(roc_auc_score(y,p)) if len(np.unique(y))>1 else None,
+            'brier':safe_float(brier_score_loss(y,p)),
+            'confusion':{'tn':int(tn),'fp':int(fp),'fn':int(fn),'tp':int(tp)},
+            'n':int(len(y)),
+            'evaluation':'5-fold stratified pooled out-of-fold predictions'
+        }
     return out
+
+def _fmt_num(v):
+    """Compact numeric formatting for learned tree thresholds/probabilities."""
+    v=float(v)
+    av=abs(v)
+    if av >= 1000: return f'{v:,.0f}'
+    if av >= 10: return f'{v:.2f}'
+    if av >= 1: return f'{v:.3f}'
+    return f'{v:.4f}'
+
+def learned_tree_formula(tree_model, imputer):
+    """Convert the fitted sklearn decision tree into an exact piecewise probability function."""
+    tr=tree_model.tree_
+    medians=imputer.statistics_
+    regions=[]
+
+    def walk(node, conditions):
+        if tr.feature[node] != _tree.TREE_UNDEFINED:
+            fi=int(tr.feature[node])
+            feature=FEATURES[fi]
+            label=FEATURE_LABELS[feature]
+            threshold=float(tr.threshold[node])
+            cond_left={'feature':feature,'label':label,'operator':'≤','threshold':threshold}
+            cond_right={'feature':feature,'label':label,'operator':'>','threshold':threshold}
+            walk(tr.children_left[node], conditions+[cond_left])
+            walk(tr.children_right[node], conditions+[cond_right])
+            return
+
+        # sklearn tree_.value may be counts or normalized class proportions depending on version.
+        values=np.asarray(tr.value[node][0],dtype=float)
+        total=float(values.sum())
+        p_success=float(values[1]/total) if total>0 and len(values)>1 else 0.0
+        regions.append({
+            'region':len(regions)+1,
+            'conditions':conditions,
+            'probability':p_success,
+            'prediction':'Success' if p_success>=0.5 else 'Fail',
+            'samples':int(tr.n_node_samples[node])
+        })
+
+    walk(0,[])
+    symbolic='P̂(Y=1 | x) = Σₘ pₘ · I(x ∈ Rₘ)'
+    classification='Ŷ = 1 (Success) if P̂(Y=1 | x) ≥ 0.500; otherwise Ŷ = 0 (Fail)'
+    return {
+        'title':'Decision Tree',
+        'equation':symbolic,
+        'probability':'Each Rₘ is a terminal-leaf region defined by the learned split thresholds below. pₘ is the observed Success proportion in that leaf.',
+        'threshold':classification,
+        'regions':regions,
+        'leaf_count':len(regions),
+        'depth':int(tree_model.get_depth()),
+        'imputation':[{'feature':FEATURES[i],'label':FEATURE_LABELS[FEATURES[i]],'median':float(medians[i])} for i in range(len(FEATURES))]
+    }
 
 def training_formula(models):
     lp=models['logistic']; scaler=lp.named_steps['scale']; clf=lp.named_steps['model']; details=[]; terms=[]
     for name,b,mean,scale in zip(FEATURES,clf.coef_[0],scaler.mean_,scaler.scale_):
         terms.append(f'({b:+.6f} × z_{name})'); details.append({'feature':name,'label':FEATURE_LABELS[name],'coefficient':float(b),'mean':float(mean),'scale':float(scale)})
-    logistic={'title':'Logistic Regression','equation':f'z = {float(clf.intercept_[0]):.6f} '+' '.join(terms),'probability':'f(x) = P(Success=1 | x) = 1 / (1 + e^(-z))','threshold':'Predicted Success if f(x) ≥ 0.500; otherwise Fail.','details':details}
-    tree_model=models['tree'].named_steps['model']; rules=export_text(tree_model,feature_names=[FEATURE_LABELS[x] for x in FEATURES],decimals=4)
-    tree={'title':'Decision Tree','equation':'f(x) = P(Success=1 | terminal leaf reached by x)','probability':'The six features follow learned IF/ELSE splits; the terminal leaf class proportion is the success probability.','threshold':'Predicted Success if f(x) ≥ 0.500; otherwise Fail.','rules':rules}
+    logistic={'title':'Logistic Regression','equation':f'z = {float(clf.intercept_[0]):.6f} '+' '.join(terms),'probability':'P̂(Y=1 | x) = 1 / (1 + e^(−z))','threshold':'Ŷ = 1 (Success) if P̂ ≥ 0.500; otherwise Ŷ = 0 (Fail).','details':details}
+    tree_pipe=models['tree']
+    tree=learned_tree_formula(tree_pipe.named_steps['model'],tree_pipe.named_steps['imputer'])
     return {'logistic':logistic,'tree':tree}
 
 def model_assessment(metrics):
